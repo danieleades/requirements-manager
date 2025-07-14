@@ -1,0 +1,21 @@
+[package]
+name = "req"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+borsh = { version = "1.5.7", features = ["derive"] }
+chrono = { version = "0.4.41", features = ["serde"] }
+clap = { version = "4.5.41", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_yaml = "0.9.34"
+sha2 = "0.10.9"
+thiserror = "2.0.12"
+uuid = { version = "1.17.0", features = ["serde", "v4", "v7"] }
+
+[lints.rust]
+missing_docs = "warn"
+
+[lints.clippy]
+pedantic = "warn"
+nursery = "warn"
