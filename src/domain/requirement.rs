@@ -14,6 +14,11 @@ use crate::domain::requirement::storage::MarkdownRequirement;
 
 mod storage;
 
+/// A requirement is a document used to describe a system.
+///
+/// It can represent a user requirement, a specification, etc.
+/// Requirements can have dependencies between them, such that one requirement
+/// satisfies, fulfils, verifies (etc.) another requirement.
 #[derive(Debug, Clone)]
 pub struct Requirement {
     content: Content,
@@ -60,6 +65,9 @@ struct Metadata {
 }
 
 impl Requirement {
+    /// Construct a new [`Requirement`] from a human-readable ID and its content.
+    ///
+    /// A new UUID is automatically generated.
     #[must_use]
     pub fn new(hrid: String, content: String) -> Self {
         let content = Content {
@@ -77,34 +85,49 @@ impl Requirement {
         Self { content, metadata }
     }
 
+    /// The body of the requirement.
+    ///
+    /// This should be a markdown document.
     #[must_use]
     pub fn content(&self) -> &str {
         &self.content.content
     }
 
+    /// The tags on the requirement
     #[must_use]
     pub const fn tags(&self) -> &BTreeSet<String> {
         &self.content.tags
     }
 
+    /// Set the tags on the requirement.
+    ///
+    /// this replaces any existing tags.
     pub fn set_tags(&mut self, tags: BTreeSet<String>) {
         self.content.tags = tags;
     }
 
+    /// Add a tag to the requirement.
+    ///
+    /// returns 'true' if a new tag was inserted, or 'false' if it was already present.
     pub fn add_tag(&mut self, tag: String) -> bool {
         self.content.tags.insert(tag)
     }
 
+    /// The human-readable identifier for this requirement.
+    ///
+    /// In normal usage these should be stable
     #[must_use]
     pub fn hrid(&self) -> &str {
         &self.metadata.hrid
     }
 
+    /// The unique, stable identifier of this requirement
     #[must_use]
     pub const fn uuid(&self) -> Uuid {
         self.metadata.uuid
     }
 
+    /// When the requirement was first created
     #[must_use]
     pub const fn created(&self) -> DateTime<Utc> {
         self.metadata.created
@@ -121,6 +144,7 @@ impl Requirement {
         self.content.fingerprint()
     }
 
+    /// Add a parent to the requirement, keyed by UUID.
     pub fn add_parent(&mut self, parent: Uuid) -> bool {
         self.metadata.parents.insert(parent)
     }
@@ -128,10 +152,22 @@ impl Requirement {
     /// Reads a requirement from the given file path.
     ///
     /// Note the path here is the path to the directory. The filename is determined by the HRID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file does not exist, cannot be read from, or has malformed YAML frontmatter.
     pub fn load(path: &Path, hrid: String) -> Result<Self, LoadError> {
         Ok(MarkdownRequirement::load(path, hrid)?.into())
     }
 
+    /// Writes the requirement to the given file path.
+    /// Creates the file if it doesn't exist, or overwrites it if it does.
+    ///
+    /// Note the path here is the path to the directory. The filename is determined by the HRID.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the path cannot be written to.
     pub fn save(&self, path: &Path) -> io::Result<()> {
         MarkdownRequirement::from(self.clone()).save(path)
     }
@@ -144,7 +180,7 @@ mod tests {
     use super::Content;
 
     #[test]
-    fn fingerprint_doesnt_panic() {
+    fn fingerprint_does_not_panic() {
         let content = Content {
             content: "Some string".to_string(),
             tags: ["tag1".to_string(), "tag2".to_string()].into(),
