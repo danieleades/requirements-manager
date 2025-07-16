@@ -45,8 +45,9 @@ mod storage {
 
     use super::{Index, Kind};
 
-    #[derive(Debug, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(from = "TomlIndexVersion")]
+    #[serde(into = "TomlIndexVersion")]
     pub struct TomlIndex {
         /// A map from the requirement type to the latest existing ID for that type.
         ///
@@ -73,23 +74,30 @@ mod storage {
         Io(#[from] io::Error),
     }
 
-    #[derive(Debug, Default, Serialize, Deserialize)]
+    #[derive(Debug, Default, Clone, Serialize, Deserialize)]
     pub struct TomlKind {
         latest_id: usize,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Serialize, Deserialize)]
     #[serde(tag = "_version")]
     enum TomlIndexVersion {
         #[serde(rename = "1")]
-        V1(TomlIndex),
+        V1 { kinds: HashMap<String, TomlKind> },
     }
 
     impl From<TomlIndexVersion> for TomlIndex {
         fn from(version: TomlIndexVersion) -> Self {
             match version {
-                TomlIndexVersion::V1(toml_index) => toml_index,
+                TomlIndexVersion::V1 { kinds } => Self { kinds },
             }
+        }
+    }
+
+    impl From<TomlIndex> for TomlIndexVersion {
+        fn from(toml_index: TomlIndex) -> Self {
+            let TomlIndex { kinds } = toml_index;
+            Self::V1 { kinds }
         }
     }
 

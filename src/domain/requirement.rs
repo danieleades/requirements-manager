@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::io;
 use std::path::Path;
 
@@ -8,7 +9,7 @@ use sha2::Digest;
 use sha2::Sha256;
 use uuid::Uuid;
 
-use crate::domain::requirement::storage::LoadError;
+pub use crate::domain::requirement::storage::LoadError;
 use crate::domain::requirement::storage::MarkdownRequirement;
 
 mod storage;
@@ -55,6 +56,7 @@ struct Metadata {
     /// change it if needed.
     hrid: String,
     created: DateTime<Utc>,
+    parents: HashSet<Uuid>,
 }
 
 impl Requirement {
@@ -69,27 +71,10 @@ impl Requirement {
             uuid: Uuid::new_v4(),
             hrid,
             created: Utc::now(),
+            parents: HashSet::new(),
         };
 
         Self { content, metadata }
-    }
-
-    #[must_use]
-    pub const fn from_parts(
-        uuid: Uuid,
-        created: DateTime<Utc>,
-        hrid: String,
-        content: String,
-        tags: BTreeSet<String>,
-    ) -> Self {
-        Self {
-            content: Content { content, tags },
-            metadata: Metadata {
-                uuid,
-                hrid,
-                created,
-            },
-        }
     }
 
     #[must_use]
@@ -136,6 +121,13 @@ impl Requirement {
         self.content.fingerprint()
     }
 
+    pub fn add_parent(&mut self, parent: Uuid) -> bool {
+        self.metadata.parents.insert(parent)
+    }
+
+    /// Reads a requirement from the given file path.
+    ///
+    /// Note the path here is the path to the directory. The filename is determined by the HRID
     pub fn load(path: &Path, hrid: String) -> Result<Self, LoadError> {
         Ok(MarkdownRequirement::load(path, hrid)?.into())
     }

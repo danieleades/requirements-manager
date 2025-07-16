@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashSet},
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Write},
     path::Path,
@@ -91,29 +91,64 @@ impl MarkdownRequirement {
 #[derive(Debug, thiserror::Error)]
 #[error("failed to read from markdown")]
 pub enum LoadError {
+    NotFound,
     Io(#[from] io::Error),
     Yaml(#[from] serde_yaml::Error),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(from = "FrontMatterVersion")]
+#[serde(into = "FrontMatterVersion")]
 struct FrontMatter {
     uuid: Uuid,
     created: DateTime<Utc>,
     tags: BTreeSet<String>,
+    parents: HashSet<Uuid>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "_version")]
 enum FrontMatterVersion {
     #[serde(rename = "1")]
-    V1(FrontMatter),
+    V1 {
+        uuid: Uuid,
+        created: DateTime<Utc>,
+        tags: BTreeSet<String>,
+        parents: HashSet<Uuid>,
+    },
 }
 
 impl From<FrontMatterVersion> for FrontMatter {
     fn from(version: FrontMatterVersion) -> Self {
         match version {
-            FrontMatterVersion::V1(front_matter) => front_matter,
+            FrontMatterVersion::V1 {
+                uuid,
+                created,
+                tags,
+                parents,
+            } => Self {
+                uuid,
+                created,
+                tags,
+                parents,
+            },
+        }
+    }
+}
+
+impl From<FrontMatter> for FrontMatterVersion {
+    fn from(front_matter: FrontMatter) -> Self {
+        let FrontMatter {
+            uuid,
+            created,
+            tags,
+            parents,
+        } = front_matter;
+        Self::V1 {
+            uuid,
+            created,
+            tags,
+            parents,
         }
     }
 }
@@ -127,6 +162,7 @@ impl From<Requirement> for MarkdownRequirement {
                     uuid,
                     hrid,
                     created,
+                    parents,
                 },
         } = req;
 
@@ -134,6 +170,7 @@ impl From<Requirement> for MarkdownRequirement {
             uuid,
             created,
             tags,
+            parents,
         };
 
         Self {
@@ -152,6 +189,7 @@ impl From<MarkdownRequirement> for Requirement {
                     uuid,
                     created,
                     tags,
+                    parents,
                 },
             hrid,
             content,
@@ -162,6 +200,7 @@ impl From<MarkdownRequirement> for Requirement {
                 uuid,
                 hrid,
                 created,
+                parents,
             },
         }
     }
@@ -192,7 +231,7 @@ This is a paragraph.
 
         let mut bytes: Vec<u8> = vec![];
 
-        requirement.write(&mut bytes);
+        requirement.write(&mut bytes).unwrap();
 
         let actual = String::from_utf8(bytes).unwrap();
 

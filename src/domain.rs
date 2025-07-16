@@ -1,4 +1,4 @@
-mod requirement;
+pub mod requirement;
 pub use requirement::Requirement;
 
 mod index;
