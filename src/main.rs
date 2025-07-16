@@ -1,8 +1,12 @@
 mod domain;
+use clap::Parser;
 pub use domain::Requirement;
 
 mod storage;
 
+mod cli;
+
 fn main() {
-    println!("Hello, world!");
+    let command = cli::Command::parse();
+    command.run();
 }

@@ -1,4 +1,6 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
+use std::io;
+use std::path::Path;
 
 use borsh::BorshSerialize;
 use chrono::{DateTime, Utc};
@@ -6,6 +8,12 @@ use sha2::Digest;
 use sha2::Sha256;
 use uuid::Uuid;
 
+use crate::domain::requirement::storage::LoadError;
+use crate::domain::requirement::storage::MarkdownRequirement;
+
+mod storage;
+
+#[derive(Debug, Clone)]
 pub struct Requirement {
     content: Content,
     metadata: Metadata,
@@ -14,10 +22,10 @@ pub struct Requirement {
 /// The semantically important content of the requirement.
 ///
 /// This contributes to the 'fingerprint' of the requirement
-#[derive(Debug, BorshSerialize)]
+#[derive(Debug, BorshSerialize, Clone)]
 struct Content {
     content: String,
-    tags: HashSet<String>,
+    tags: BTreeSet<String>,
 }
 
 impl Content {
@@ -36,6 +44,7 @@ impl Content {
 /// Requirement metadata.
 ///
 /// Does not contribute to the requirement fingerprint.
+#[derive(Debug, Clone)]
 struct Metadata {
     /// Globally unique, perpetually stable identifier
     uuid: Uuid,
@@ -53,7 +62,7 @@ impl Requirement {
     pub fn new(hrid: String, content: String) -> Self {
         let content = Content {
             content,
-            tags: HashSet::default(),
+            tags: BTreeSet::default(),
         };
 
         let metadata = Metadata {
@@ -71,7 +80,7 @@ impl Requirement {
         created: DateTime<Utc>,
         hrid: String,
         content: String,
-        tags: HashSet<String>,
+        tags: BTreeSet<String>,
     ) -> Self {
         Self {
             content: Content { content, tags },
@@ -89,11 +98,11 @@ impl Requirement {
     }
 
     #[must_use]
-    pub const fn tags(&self) -> &HashSet<String> {
+    pub const fn tags(&self) -> &BTreeSet<String> {
         &self.content.tags
     }
 
-    pub fn set_tags(&mut self, tags: HashSet<String>) {
+    pub fn set_tags(&mut self, tags: BTreeSet<String>) {
         self.content.tags = tags;
     }
 
@@ -126,11 +135,19 @@ impl Requirement {
     pub fn fingerprint(&self) -> String {
         self.content.fingerprint()
     }
+
+    pub fn load(path: &Path, hrid: String) -> Result<Self, LoadError> {
+        Ok(MarkdownRequirement::load(path, hrid)?.into())
+    }
+
+    pub fn save(&self, path: &Path) -> io::Result<()> {
+        MarkdownRequirement::from(self.clone()).save(path)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
 
     use super::Content;
 
@@ -138,7 +155,7 @@ mod tests {
     fn fingerprint_doesnt_panic() {
         let content = Content {
             content: "Some string".to_string(),
-            tags: HashSet::from(["tag1".to_string(), "tag2".to_string()]),
+            tags: ["tag1".to_string(), "tag2".to_string()].into(),
         };
         content.fingerprint();
     }
@@ -147,11 +164,11 @@ mod tests {
     fn fingerprint_is_stable_with_tag_order() {
         let content1 = Content {
             content: "Some string".to_string(),
-            tags: HashSet::from(["tag1".to_string(), "tag2".to_string()]),
+            tags: ["tag1".to_string(), "tag2".to_string()].into(),
         };
         let content2 = Content {
             content: "Some string".to_string(),
-            tags: HashSet::from(["tag2".to_string(), "tag1".to_string()]),
+            tags: ["tag2".to_string(), "tag1".to_string()].into(),
         };
         assert_eq!(content1.fingerprint(), content2.fingerprint());
     }
@@ -160,11 +177,11 @@ mod tests {
     fn tags_affect_fingerprint() {
         let content1 = Content {
             content: "Some string".to_string(),
-            tags: HashSet::from(["tag1".to_string()]),
+            tags: ["tag1".to_string()].into(),
         };
         let content2 = Content {
             content: "Some string".to_string(),
-            tags: HashSet::from(["tag1".to_string(), "tag2".to_string()]),
+            tags: ["tag1".to_string(), "tag2".to_string()].into(),
         };
         assert_ne!(content1.fingerprint(), content2.fingerprint());
     }
@@ -173,11 +190,11 @@ mod tests {
     fn content_affects_fingerprint() {
         let content1 = Content {
             content: "Some string".to_string(),
-            tags: HashSet::default(),
+            tags: BTreeSet::default(),
         };
         let content2 = Content {
             content: "Other string".to_string(),
-            tags: HashSet::default(),
+            tags: BTreeSet::default(),
         };
         assert_ne!(content1.fingerprint(), content2.fingerprint());
     }
