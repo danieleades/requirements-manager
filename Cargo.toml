@@ -2,6 +2,8 @@
 name = "req"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+rust-version = "1.85.1"
 
 [dependencies]
 borsh = { version = "1.5.7", features = ["derive"] }
