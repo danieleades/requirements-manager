@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 
@@ -61,7 +61,13 @@ struct Metadata {
     /// change it if needed.
     hrid: String,
     created: DateTime<Utc>,
-    parents: HashSet<Uuid>,
+    parents: HashMap<Uuid, Parent>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Parent {
+    pub hrid: String,
+    pub fingerprint: String,
 }
 
 impl Requirement {
@@ -79,7 +85,7 @@ impl Requirement {
             uuid: Uuid::new_v4(),
             hrid,
             created: Utc::now(),
-            parents: HashSet::new(),
+            parents: HashMap::new(),
         };
 
         Self { content, metadata }
@@ -145,8 +151,8 @@ impl Requirement {
     }
 
     /// Add a parent to the requirement, keyed by UUID.
-    pub fn add_parent(&mut self, parent: Uuid) -> bool {
-        self.metadata.parents.insert(parent)
+    pub fn add_parent(&mut self, parent_id: Uuid, parent_info: Parent) -> Option<Parent> {
+        self.metadata.parents.insert(parent_id, parent_info)
     }
 
     /// Reads a requirement from the given file path.

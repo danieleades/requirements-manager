@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use crate::{
     Requirement,
-    domain::{Index, requirement::LoadError},
+    domain::{
+        Index,
+        requirement::{LoadError, Parent},
+    },
 };
 
 /// A filesystem backed store of requirements.
@@ -29,8 +32,6 @@ impl Directory {
 
         let idx = index.bump_index(kind.to_string());
 
-        dbg!(idx);
-
         let requirement = Requirement::new(format!("{kind}-{idx}"), String::new());
 
         requirement.save(&self.root).unwrap();
@@ -42,13 +43,18 @@ impl Directory {
         let mut child = self.load_requirement(child).unwrap().unwrap();
         let parent = self.load_requirement(parent).unwrap().unwrap();
 
-        child.add_parent(parent.uuid());
+        child.add_parent(
+            parent.uuid(),
+            Parent {
+                hrid: parent.hrid().to_string(),
+                fingerprint: parent.fingerprint(),
+            },
+        );
 
         child.save(&self.root).unwrap();
     }
 
     fn load_requirement(&self, hrid: String) -> Option<Result<Requirement, LoadError>> {
-        dbg!(&self.root);
         match Requirement::load(&self.root, hrid) {
             Ok(requirement) => Some(Ok(requirement)),
             Err(LoadError::NotFound) => None,

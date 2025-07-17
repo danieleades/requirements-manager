@@ -20,3 +20,6 @@ missing_docs = "warn"
 [lints.clippy]
 pedantic = "warn"
 nursery = "warn"
+
+[dev-dependencies]
+tempfile = "3.20.0"
