@@ -1,2 +1,4 @@
+_version = "1"
+
 [kinds.TST]
-latest_id = 1
+latest_id = 3
