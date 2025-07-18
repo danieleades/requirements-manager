@@ -11,6 +11,6 @@ mod storage;
 mod cli;
 
 fn main() {
-    let command = cli::Command::parse();
-    command.run();
+    let cli = cli::Cli::parse();
+    cli.run();
 }
