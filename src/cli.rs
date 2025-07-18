@@ -33,8 +33,7 @@ impl Cli {
             _ => tracing::Level::TRACE,
         };
 
-        let filter = tracing_subscriber::EnvFilter::from_default_env()
-            .add_directive(level.into());
+        let filter = tracing_subscriber::EnvFilter::from_default_env().add_directive(level.into());
 
         let fmt_layer = tracing_subscriber::fmt::layer()
             .pretty()
@@ -122,6 +121,7 @@ pub struct Clean {
 }
 
 impl Clean {
+    #[instrument]
     fn run(self) {
         let mut tree = Tree::load_all(self.root);
         tree.update_hrids();
