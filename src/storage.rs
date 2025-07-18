@@ -8,6 +8,10 @@ use crate::{
     },
 };
 
+mod tree;
+
+pub use tree::Tree;
+
 /// A filesystem backed store of requirements.
 pub struct Directory {
     /// The root of the directory requirements are stored in.
