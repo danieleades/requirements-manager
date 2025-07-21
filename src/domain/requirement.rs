@@ -19,7 +19,7 @@ mod storage;
 /// It can represent a user requirement, a specification, etc.
 /// Requirements can have dependencies between them, such that one requirement
 /// satisfies, fulfils, verifies (etc.) another requirement.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Requirement {
     content: Content,
     metadata: Metadata,
@@ -28,7 +28,7 @@ pub struct Requirement {
 /// The semantically important content of the requirement.
 ///
 /// This contributes to the 'fingerprint' of the requirement
-#[derive(Debug, BorshSerialize, Clone)]
+#[derive(Debug, BorshSerialize, Clone, PartialEq)]
 struct Content {
     content: String,
     tags: BTreeSet<String>,
@@ -50,7 +50,7 @@ impl Content {
 /// Requirement metadata.
 ///
 /// Does not contribute to the requirement fingerprint.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Metadata {
     /// Globally unique, perpetually stable identifier
     uuid: Uuid,
@@ -64,7 +64,7 @@ struct Metadata {
     parents: HashMap<Uuid, Parent>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Parent {
     pub hrid: String,
     pub fingerprint: String,

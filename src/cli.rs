@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::ArgAction;
 use tracing::instrument;
+use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::storage::{Directory, Tree};
 
@@ -9,7 +10,7 @@ use crate::storage::{Directory, Tree};
 #[command(version, about)]
 pub struct Cli {
     /// Verbosity (-v, -vv, -vvv)
-    #[arg(short, long, action = ArgAction::Count)]
+    #[arg(short, long, action = ArgAction::Count, global=true)]
     verbose: u8,
 
     #[command(subcommand)]
@@ -36,10 +37,10 @@ impl Cli {
         let filter = tracing_subscriber::EnvFilter::from_default_env().add_directive(level.into());
 
         let fmt_layer = tracing_subscriber::fmt::layer()
-            .pretty()
+            //.pretty()
             .with_target(false)
             .with_thread_names(false)
-            .with_line_number(true);
+            .with_line_number(false);
 
         tracing_subscriber::registry()
             .with(filter)
@@ -121,9 +122,10 @@ pub struct Clean {
 }
 
 impl Clean {
-    #[instrument]
+    #[instrument(skip(self))]
     fn run(self) {
-        let mut tree = Tree::load_all(self.root);
-        tree.update_hrids();
+        let mut directory = Directory::open(self.root);
+        directory.load_all();
+        directory.update_hrids();
     }
 }
