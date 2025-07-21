@@ -64,7 +64,7 @@ struct Metadata {
     parents: HashMap<Uuid, Parent>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parent {
     pub hrid: String,
     pub fingerprint: String,
@@ -153,10 +153,6 @@ impl Requirement {
     /// Add a parent to the requirement, keyed by UUID.
     pub fn add_parent(&mut self, parent_id: Uuid, parent_info: Parent) -> Option<Parent> {
         self.metadata.parents.insert(parent_id, parent_info)
-    }
-
-    pub(crate) fn update_parent_hrid_unchecked(&mut self, parent_id: Uuid, parent_hrid: String) {
-        self.metadata.parents.get_mut(&parent_id).unwrap().hrid = parent_hrid;
     }
 
     /// Return an iterator over the requirement's 'parents'

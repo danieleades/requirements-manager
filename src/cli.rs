@@ -2,9 +2,8 @@ use std::path::PathBuf;
 
 use clap::ArgAction;
 use tracing::instrument;
-use tracing_subscriber::fmt::format::FmtSpan;
 
-use crate::storage::{Directory, Tree};
+use crate::storage::Directory;
 
 #[derive(Debug, clap::Parser)]
 #[command(version, about)]

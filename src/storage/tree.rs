@@ -39,34 +39,42 @@ impl Tree {
     /// Returns an iterator of UUIDs whose parents were updated.
     #[instrument(skip(self))]
     pub fn update_hrids(&mut self) -> impl Iterator<Item = Uuid> + '_ {
-        let len = self.requirements.len();
-
-        (0..len).filter_map(move |i| {
+        (0..self.requirements.len()).filter_map(|i| {
             let (left, right) = self.requirements.split_at_mut(i);
-            let (req, right) = right.split_first_mut()?; // req = self.requirements[i]
+            let (req, right) = right.split_first_mut()?;
+            let uuid = req.uuid();
 
-            let updated = req.parents_mut().any(|(parent_id, parent)| {
-                let &parent_idx = self
-                    .index
-                    .get(&parent_id)
-                    .unwrap_or_else(|| panic!("Parent requirement {parent_id} not found!"));
+            let updated: Vec<bool> = req
+                .parents_mut()
+                .map(|(parent_id, parent)| {
+                    let &parent_idx = self
+                        .index
+                        .get(&parent_id)
+                        .unwrap_or_else(|| panic!("Parent requirement {parent_id} not found!"));
 
-                // Safe: parent_idx != i is enforced by match arms
-                let actual_hrid = match parent_idx.cmp(&i) {
-                    Ordering::Less => left[parent_idx].hrid(),
-                    Ordering::Greater => right[parent_idx - i - 1].hrid(),
-                    Ordering::Equal => panic!("Requirement {parent_id} is its own parent!"),
-                };
+                    let actual_hrid = match parent_idx.cmp(&i) {
+                        Ordering::Less => left[parent_idx].hrid(),
+                        Ordering::Greater => right[parent_idx - i - 1].hrid(),
+                        Ordering::Equal => {
+                            unreachable!("Requirement {parent_id} is its own parent!")
+                        }
+                    };
 
-                if parent.hrid == actual_hrid {
-                    false
-                } else {
-                    parent.hrid = actual_hrid.to_string();
-                    true
-                }
-            });
+                    if parent.hrid == actual_hrid {
+                        false
+                    } else {
+                        parent.hrid = actual_hrid.to_string();
+                        true
+                    }
+                })
+                // Collect here to ensure all parents are updated (no short-circuiting).
+                .collect();
 
-            updated.then(|| req.uuid())
+            // If any parent was updated, return the UUID of the requirement.
+            updated
+                .iter()
+                .any(|was_updated| *was_updated)
+                .then_some(uuid)
         })
     }
 }
