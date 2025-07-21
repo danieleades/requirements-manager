@@ -155,6 +155,10 @@ impl Requirement {
         self.metadata.parents.insert(parent_id, parent_info)
     }
 
+    pub(crate) fn update_parent_hrid_unchecked(&mut self, parent_id: Uuid, parent_hrid: String) {
+        self.metadata.parents.get_mut(&parent_id).unwrap().hrid = parent_hrid;
+    }
+
     /// Return an iterator over the requirement's 'parents'
     pub fn parents(&self) -> impl Iterator<Item = (Uuid, &Parent)> {
         self.metadata
