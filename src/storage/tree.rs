@@ -7,7 +7,7 @@ use std::{cmp::Ordering, collections::HashMap};
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::Requirement;
+use crate::{domain::Hrid, Requirement};
 
 /// An in-memory representation of the set of requirements
 #[derive(Debug, Default, PartialEq)]
@@ -18,8 +18,8 @@ pub struct Tree {
     /// An index from UUID to position in `requirements`.
     index: HashMap<Uuid, usize>,
 
-    /// for HRID → UUID resolution, non-authoritative
-    hrid_index: HashMap<String, Uuid>,
+    /// A map from requirement kind to the next available index for that kind.
+    next_indices: HashMap<String, usize>,
 }
 
 impl Tree {
@@ -32,6 +32,15 @@ impl Tree {
             "Duplicate requirement UUID: {uuid}"
         );
         let index = self.requirements.len();
+
+        // Update the current index for the requirement's kind to the larger of its current value or the index of the incoming requirement.
+        let Hrid { kind, id: suffix } = requirement.hrid();
+        
+        self.next_indices
+            .entry(kind.to_string())
+            .and_modify(|i| *i = (*i).max(suffix + 1))
+            .or_insert(suffix + 1);
+
         self.requirements.push(requirement);
         self.index.insert(uuid, index);
     }
@@ -68,10 +77,10 @@ impl Tree {
                         }
                     };
 
-                    if parent.hrid == actual_hrid {
+                    if parent.hrid == *actual_hrid {
                         false
                     } else {
-                        parent.hrid = actual_hrid.to_string();
+                        parent.hrid = actual_hrid.clone();
                         true
                     }
                 })
@@ -85,6 +94,14 @@ impl Tree {
                 .then_some(uuid)
         })
     }
+
+    /// Returns the next available index for a requirement of the given kind.
+    ///
+    /// This is one greater than the highest index currently used for that kind.
+    /// No attempt is made to 'recycle' indices if there are gaps in the sequence.
+    pub fn next_index(&self, kind: &str) -> usize {
+        self.next_indices.get(kind).copied().unwrap_or(1)
+    }
 }
 
 #[cfg(test)]
@@ -92,10 +109,11 @@ mod tests {
     use uuid::Uuid;
 
     use crate::Requirement;
+    use crate::domain::Hrid;
     use crate::storage::Tree;
 
-    fn make_requirement(uuid: Uuid, hrid: &str, parents: Vec<(Uuid, String)>) -> Requirement {
-        let mut req = Requirement::new_with_uuid(hrid.to_string(), String::new(), uuid);
+    fn make_requirement(uuid: Uuid, hrid: Hrid, parents: Vec<(Uuid, Hrid)>) -> Requirement {
+        let mut req = Requirement::new_with_uuid(hrid, String::new(), uuid);
         for (parent_uuid, parent_hrid) in parents {
             req.add_parent(
                 parent_uuid,
@@ -112,12 +130,13 @@ mod tests {
     fn test_insert_and_lookup() {
         let mut tree = Tree::default();
         let uuid = Uuid::new_v4();
-        let req = make_requirement(uuid, "R-001", vec![]);
+        let hrid = Hrid::try_from("R-001").unwrap();
+        let req = make_requirement(uuid, hrid.clone(), vec![]);
         tree.insert(req);
 
         let retrieved = tree.requirement(uuid).unwrap();
         assert_eq!(retrieved.uuid(), uuid);
-        assert_eq!(retrieved.hrid(), "R-001");
+        assert_eq!(retrieved.hrid(), &hrid);
     }
 
     #[test]
@@ -125,8 +144,8 @@ mod tests {
     fn test_insert_duplicate_uuid_panics() {
         let mut tree = Tree::default();
         let uuid = Uuid::new_v4();
-        let req1 = make_requirement(uuid, "R-001", vec![]);
-        let req2 = make_requirement(uuid, "R-002", vec![]);
+        let req1 = make_requirement(uuid, Hrid::try_from("R-001").unwrap(), vec![]);
+        let req2 = make_requirement(uuid, Hrid::try_from("R-002").unwrap(), vec![]);
         tree.insert(req1);
         tree.insert(req2); // should panic
     }
@@ -137,11 +156,11 @@ mod tests {
         let parent_uuid = Uuid::new_v4();
         let child_uuid = Uuid::new_v4();
 
-        let parent = make_requirement(parent_uuid, "P-001", vec![]);
+        let parent = make_requirement(parent_uuid, Hrid::try_from("P-001").unwrap(), vec![]);
         let child = make_requirement(
             child_uuid,
-            "C-001",
-            vec![(parent_uuid, "WRONG".to_string())],
+            Hrid::try_from("C-001").unwrap(),
+            vec![(parent_uuid, Hrid::try_from("WRONG-001").unwrap())],
         );
 
         tree.insert(parent);
@@ -152,7 +171,7 @@ mod tests {
 
         let updated_child = tree.requirement(child_uuid).unwrap();
         let (_, actual_parent) = updated_child.parents().next().unwrap();
-        assert_eq!(actual_parent.hrid, "P-001");
+        assert_eq!(actual_parent.hrid, Hrid::try_from("P-001").unwrap());
     }
 
     #[test]
@@ -161,11 +180,11 @@ mod tests {
         let parent_uuid = Uuid::new_v4();
         let child_uuid = Uuid::new_v4();
 
-        let parent = make_requirement(parent_uuid, "P-001", vec![]);
+        let parent = make_requirement(parent_uuid, Hrid::try_from("P-001").unwrap(), vec![]);
         let child = make_requirement(
             child_uuid,
-            "C-001",
-            vec![(parent_uuid, "P-001".to_string())],
+            Hrid::try_from("C-001").unwrap(),
+            vec![(parent_uuid, Hrid::try_from("P-001").unwrap())],
         );
 
         tree.insert(parent);
@@ -183,8 +202,8 @@ mod tests {
         let child_uuid = Uuid::new_v4();
         let child = make_requirement(
             child_uuid,
-            "C-001",
-            vec![(missing_uuid, "UNKNOWN".to_string())],
+            Hrid::try_from("C-001").unwrap(),
+            vec![(missing_uuid, Hrid::try_from("UNKNOWN-001").unwrap())],
         );
 
         tree.insert(child);
@@ -196,7 +215,11 @@ mod tests {
     fn test_update_hrids_self_parent_panics() {
         let mut tree = Tree::default();
         let uuid = Uuid::new_v4();
-        let req = make_requirement(uuid, "SELF", vec![(uuid, "SELF".to_string())]);
+        let req = make_requirement(
+            uuid,
+            Hrid::try_from("SELF-001").unwrap(),
+            vec![(uuid, Hrid::try_from("SELF-001").unwrap())],
+        );
 
         tree.insert(req);
         let _ = tree.update_hrids().collect::<Vec<_>>();

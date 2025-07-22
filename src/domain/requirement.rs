@@ -9,6 +9,7 @@ use sha2::Digest;
 use sha2::Sha256;
 use uuid::Uuid;
 
+use crate::domain::Hrid;
 pub use crate::domain::requirement::storage::LoadError;
 use crate::domain::requirement::storage::MarkdownRequirement;
 
@@ -59,14 +60,14 @@ struct Metadata {
     ///
     /// This should in general change, however it is possible to
     /// change it if needed.
-    hrid: String,
+    hrid: Hrid,
     created: DateTime<Utc>,
     parents: HashMap<Uuid, Parent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parent {
-    pub hrid: String,
+    pub hrid: Hrid,
     pub fingerprint: String,
 }
 
@@ -75,11 +76,11 @@ impl Requirement {
     ///
     /// A new UUID is automatically generated.
     #[must_use]
-    pub fn new(hrid: String, content: String) -> Self {
+    pub fn new(hrid: Hrid, content: String) -> Self {
         Self::new_with_uuid(hrid, content, Uuid::new_v4())
     }
 
-    pub(crate) fn new_with_uuid(hrid: String, content: String, uuid: Uuid) -> Self {
+    pub(crate) fn new_with_uuid(hrid: Hrid, content: String, uuid: Uuid) -> Self {
         let content = Content {
             content,
             tags: BTreeSet::default(),
@@ -127,7 +128,7 @@ impl Requirement {
     ///
     /// In normal usage these should be stable
     #[must_use]
-    pub fn hrid(&self) -> &str {
+    pub const fn hrid(&self) -> &Hrid {
         &self.metadata.hrid
     }
 
@@ -183,7 +184,7 @@ impl Requirement {
     ///
     /// Returns an error if the file does not exist, cannot be read from, or has malformed YAML frontmatter.
     pub fn load(path: &Path, hrid: String) -> Result<Self, LoadError> {
-        Ok(MarkdownRequirement::load(path, hrid)?.into())
+        Ok(MarkdownRequirement::load(path, hrid)?.try_into()?)
     }
 
     /// Writes the requirement to the given file path.
