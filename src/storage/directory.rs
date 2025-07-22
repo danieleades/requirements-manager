@@ -3,15 +3,16 @@
 //! The [`Directory`] provides a way to manage requirements stored in a directory structure.
 //! It is a wrapper around the filesystem agnostic [`Tree`].
 
-use std::{ffi::OsStr, path::PathBuf};
+use std::{ffi::OsStr, path::PathBuf, sync::Mutex};
 
+use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use walkdir::WalkDir;
 
 use crate::{
     Requirement,
     domain::{
         Config, Hrid,
-        requirement::{LoadError, Parent},
+        requirement::{self, LoadError, Parent},
     },
 };
 
@@ -67,19 +68,28 @@ impl Directory<Unloaded> {
     pub fn load_all(self) -> Directory<Loaded> {
         let mut tree = Tree::default();
 
-        let paths = WalkDir::new(&self.root)
+        let requirements: Vec<Requirement> = WalkDir::new(&self.root)
             .into_iter()
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension() == Some(OsStr::new("md")))
-            .map(walkdir::DirEntry::into_path);
+            .map(walkdir::DirEntry::into_path)
+            .par_bridge() // Convert to parallel iterator directly
+            .filter_map(|path| {
+                let hrid = path.file_stem()?.to_string_lossy().to_string();
+                let directory = path.parent()?.to_path_buf();
 
-        for path in paths {
-            let hrid = path.file_stem().unwrap().to_string_lossy().to_string();
+                // Handle errors gracefully instead of unwrap
+                match Requirement::load(&directory, hrid) {
+                    Ok(req) => Some(req),
+                    Err(e) => {
+                        tracing::warn!("Failed to load requirement from {}: {}", path.display(), e);
+                        None
+                    }
+                }
+            })
+            .collect();
 
-            let directory = path.parent().unwrap().to_path_buf();
-
-            let requirement = Requirement::load(&directory, hrid.clone()).unwrap();
-
+        for requirement in requirements {
             tree.insert(requirement);
         }
 
