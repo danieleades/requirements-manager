@@ -7,7 +7,7 @@ use std::{cmp::Ordering, collections::HashMap};
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::{domain::Hrid, Requirement};
+use crate::{Requirement, domain::Hrid};
 
 /// An in-memory representation of the set of requirements
 #[derive(Debug, Default, PartialEq)]
@@ -35,7 +35,7 @@ impl Tree {
 
         // Update the current index for the requirement's kind to the larger of its current value or the index of the incoming requirement.
         let Hrid { kind, id: suffix } = requirement.hrid();
-        
+
         self.next_indices
             .entry(kind.to_string())
             .and_modify(|i| *i = (*i).max(suffix + 1))

@@ -4,9 +4,9 @@
 
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion};
-use tempfile::TempDir;
+use criterion::{Criterion, criterion_group, criterion_main};
 use req::Directory;
+use tempfile::TempDir;
 
 fn preseed_directory(path: &std::path::Path, n: usize) {
     let mut dir = Directory::new(path.to_path_buf()).load_all();
@@ -36,7 +36,9 @@ fn add_single_requirement_to_populated_dir(c: &mut Criterion) {
 
         b.iter(|| {
             // Benchmark one additional insert
-            Directory::new(tmp_dir.path().to_path_buf()).load_all().add_requirement(black_box("R".to_string()));
+            Directory::new(tmp_dir.path().to_path_buf())
+                .load_all()
+                .add_requirement(black_box("R".to_string()));
         });
     });
 }
