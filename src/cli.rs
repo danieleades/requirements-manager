@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::ArgAction;
 use tracing::instrument;
 
-use crate::storage::Directory;
+use req::Directory;
 
 #[derive(Debug, clap::Parser)]
 #[command(version, about)]
@@ -11,6 +11,10 @@ pub struct Cli {
     /// Verbosity (-v, -vv, -vvv)
     #[arg(short, long, action = ArgAction::Count, global=true)]
     verbose: u8,
+
+    /// The path to the root of the requirements directory
+    #[arg(short, long, default_value = ".", global = true)]
+    root: PathBuf,
 
     #[command(subcommand)]
     command: Command,
@@ -20,7 +24,7 @@ impl Cli {
     pub fn run(self) {
         Self::setup_logging(self.verbose);
 
-        self.command.run();
+        self.command.run(self.root);
     }
 
     fn setup_logging(verbosity: u8) {
@@ -59,15 +63,15 @@ pub enum Command {
     Link(Link),
 
     /// Correct parent HRIDs
-    Clean(Clean),
+    Clean,
 }
 
 impl Command {
-    fn run(self) {
+    fn run(self, root: PathBuf) {
         match self {
-            Self::Add(command) => command.run(),
-            Self::Link(command) => command.run(),
-            Self::Clean(command) => command.run(),
+            Self::Add(command) => command.run(root),
+            Self::Link(command) => command.run(root),
+            Self::Clean => Clean::run(root),
         }
     }
 }
@@ -79,16 +83,24 @@ pub struct Add {
     /// eg. 'USR' or 'SYS'.
     kind: String,
 
-    /// The path to the root of the requirements directory
-    #[arg(short, long, default_value = ".")]
-    root: PathBuf,
+    /// The human-readable IDs of the parent requirements.
+    #[clap(long, short, value_delimiter = ',')]
+    parent: Vec<String>,
 }
 
 impl Add {
     #[instrument]
-    fn run(self) {
-        let directory = Directory::new(self.root);
-        directory.add_requirement(&self.kind);
+    fn run(self, root: PathBuf) {
+        let mut directory = Directory::new(root).load_all();
+        let requirement = directory.add_requirement(self.kind);
+
+        for parent in self.parent {
+            // TODO: the linkage should be done before the requirement is saved by the 'add_requirement' method
+            // to avoid unnecessary IO.
+            directory.link_requirement(requirement.hrid().to_string(), parent);
+        }
+
+        println!("Added requirement {}", requirement.hrid());
     }
 }
 
@@ -99,30 +111,26 @@ pub struct Link {
 
     /// The human-readable ID of the parent document
     parent: String,
-
-    /// The path to the root of the requirements directory
-    #[arg(short, long, default_value = ".")]
-    root: PathBuf,
 }
 
 impl Link {
     #[instrument]
-    fn run(self) {
-        let directory = Directory::new(self.root);
+    fn run(self, root: PathBuf) {
+        let directory = Directory::new(root);
+        let msg = format!("Linked {} to {}", self.child, self.parent);
+
         directory.link_requirement(self.child, self.parent);
+
+        println!("{msg}");
     }
 }
 
 #[derive(Debug, clap::Parser)]
-pub struct Clean {
-    /// The path to the root of the requirements directory
-    #[arg(short, long, default_value = ".")]
-    root: PathBuf,
-}
+pub struct Clean {}
 
 impl Clean {
-    #[instrument(skip(self))]
-    fn run(self) {
-        Directory::new(self.root).load_all().update_hrids();
+    #[instrument]
+    fn run(path: PathBuf) {
+        Directory::new(path).load_all().update_hrids();
     }
 }

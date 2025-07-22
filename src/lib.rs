@@ -2,11 +2,8 @@
 //!
 //! Requirements are markdown documents stored in a directory.
 
-use clap::Parser;
+mod domain;
+pub use domain::Requirement;
 
-mod cli;
-
-fn main() {
-    let cli = cli::Cli::parse();
-    cli.run();
-}
+mod storage;
+pub use storage::Directory;

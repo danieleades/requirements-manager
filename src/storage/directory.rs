@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 use crate::{
     Requirement,
     domain::{
-        Index,
+        Config, Hrid,
         requirement::{LoadError, Parent},
     },
 };
@@ -28,6 +28,31 @@ pub struct Directory<S> {
     /// The root of the directory requirements are stored in.
     root: PathBuf,
     state: S,
+}
+
+impl<S> Directory<S> {
+    pub fn link_requirement(&self, child: String, parent: String) {
+        let mut child = self.load_requirement(child).unwrap().unwrap();
+        let parent = self.load_requirement(parent).unwrap().unwrap();
+
+        child.add_parent(
+            parent.uuid(),
+            Parent {
+                hrid: parent.hrid().clone(),
+                fingerprint: parent.fingerprint(),
+            },
+        );
+
+        child.save(&self.root).unwrap();
+    }
+
+    fn load_requirement(&self, hrid: String) -> Option<Result<Requirement, LoadError>> {
+        match Requirement::load(&self.root, hrid) {
+            Ok(requirement) => Some(Ok(requirement)),
+            Err(LoadError::NotFound) => None,
+            Err(e) => Some(Err(e)),
+        }
+    }
 }
 
 impl Directory<Unloaded> {
@@ -63,49 +88,30 @@ impl Directory<Unloaded> {
             state: Loaded(tree),
         }
     }
-
-    pub fn add_requirement(&self, kind: &str) {
-        let index_path = self.root.join(".index.toml");
-
-        let mut index = Index::load(&index_path).unwrap_or_else(|e| {
-            println!("Failed to load index: {e}");
-            Index::default()
-        });
-
-        let idx = index.bump_index(kind.to_string());
-
-        let requirement = Requirement::new(format!("{kind}-{idx}"), String::new());
-
-        requirement.save(&self.root).unwrap();
-
-        index.save(&index_path).unwrap();
-    }
-
-    pub fn link_requirement(&self, child: String, parent: String) {
-        let mut child = self.load_requirement(child).unwrap().unwrap();
-        let parent = self.load_requirement(parent).unwrap().unwrap();
-
-        child.add_parent(
-            parent.uuid(),
-            Parent {
-                hrid: parent.hrid().to_string(),
-                fingerprint: parent.fingerprint(),
-            },
-        );
-
-        child.save(&self.root).unwrap();
-    }
-
-    fn load_requirement(&self, hrid: String) -> Option<Result<Requirement, LoadError>> {
-        match Requirement::load(&self.root, hrid) {
-            Ok(requirement) => Some(Ok(requirement)),
-            Err(LoadError::NotFound) => None,
-            Err(e) => Some(Err(e)),
-        }
-    }
 }
 
 impl Directory<Loaded> {
+    pub fn add_requirement(&mut self, kind: String) -> Requirement {
+        let config_path = self.root.join("config.toml");
+
+        let tree = &mut self.state.0;
+
+        let _config = Config::load(&config_path).unwrap_or_else(|e| {
+            tracing::debug!("Failed to load config: {e}");
+            Config::default()
+        });
+
+        let id = tree.next_index(&kind);
+
+        let requirement = Requirement::new(Hrid { kind, id }, String::new());
+
+        requirement.save(&self.root).unwrap();
+        tree.insert(requirement.clone());
+
+        tracing::info!("Added requirement: {}", requirement.hrid());
+
+        requirement
+    }
     pub fn update_hrids(&mut self) {
         let tree = &mut self.state.0;
         let updated: Vec<_> = tree.update_hrids().collect();

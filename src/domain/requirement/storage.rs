@@ -9,7 +9,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::requirement::{Content, Metadata};
+use crate::domain::{
+    Hrid, hrid,
+    requirement::{Content, Metadata},
+};
 
 use super::Requirement;
 
@@ -100,6 +103,7 @@ pub enum LoadError {
     NotFound,
     Io(#[from] io::Error),
     Yaml(#[from] serde_yaml::Error),
+    Hrid(#[from] hrid::Error),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -190,50 +194,63 @@ impl From<Requirement> for MarkdownRequirement {
                 .map(|(uuid, super::Parent { hrid, fingerprint })| Parent {
                     uuid,
                     fingerprint,
-                    hrid,
+                    hrid: hrid.to_string(),
                 })
                 .collect(),
         };
 
         Self {
             frontmatter,
-            hrid,
+            hrid: hrid.to_string(),
             content,
         }
     }
 }
 
-impl From<MarkdownRequirement> for Requirement {
-    fn from(req: MarkdownRequirement) -> Self {
-        let MarkdownRequirement {
-            frontmatter:
-                FrontMatter {
+impl TryFrom<MarkdownRequirement> for Requirement {
+    type Error = hrid::Error;
+
+    fn try_from(req: MarkdownRequirement) -> Result<Self, Self::Error> {
+        let FrontMatter {
+            uuid,
+            created,
+            tags,
+            parents,
+        } = req.frontmatter;
+
+        let hrid = Hrid::try_from(req.hrid.as_str())?;
+
+        let parent_map = parents
+            .into_iter()
+            .map(|parent| {
+                let Parent {
                     uuid,
-                    created,
-                    tags,
-                    parents,
-                },
-            hrid,
-            content,
-        } = req;
-        Self {
-            content: Content { content, tags },
+                    fingerprint,
+                    hrid,
+                } = parent;
+                let parsed_hrid = Hrid::try_from(hrid.as_str())?;
+                Ok((
+                    uuid,
+                    super::Parent {
+                        hrid: parsed_hrid,
+                        fingerprint,
+                    },
+                ))
+            })
+            .collect::<Result<_, Self::Error>>()?;
+
+        Ok(Self {
+            content: Content {
+                content: req.content,
+                tags,
+            },
             metadata: Metadata {
                 uuid,
                 hrid,
                 created,
-                parents: parents
-                    .into_iter()
-                    .map(
-                        |Parent {
-                             uuid,
-                             fingerprint,
-                             hrid,
-                         }| (uuid, super::Parent { hrid, fingerprint }),
-                    )
-                    .collect(),
+                parents: parent_map,
             },
-        }
+        })
     }
 }
 
