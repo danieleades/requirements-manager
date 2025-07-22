@@ -5,7 +5,7 @@
 
 use std::{ffi::OsStr, path::PathBuf, sync::Mutex};
 
-use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use walkdir::WalkDir;
 
 use crate::{
@@ -66,31 +66,26 @@ impl Directory<Unloaded> {
     }
 
     pub fn load_all(self) -> Directory<Loaded> {
-        let mut tree = Tree::default();
-
-        let requirements: Vec<Requirement> = WalkDir::new(&self.root)
+        let paths: Vec<_> = WalkDir::new(&self.root)
             .into_iter()
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension() == Some(OsStr::new("md")))
             .map(walkdir::DirEntry::into_path)
-            .par_bridge() // Convert to parallel iterator directly
-            .filter_map(|path| {
-                let hrid = path.file_stem()?.to_string_lossy().to_string();
-                let directory = path.parent()?.to_path_buf();
+            .collect();
 
-                // Handle errors gracefully instead of unwrap
-                match Requirement::load(&directory, hrid) {
-                    Ok(req) => Some(req),
-                    Err(e) => {
-                        tracing::warn!("Failed to load requirement from {}: {}", path.display(), e);
-                        None
-                    }
-                }
+        let requirements: Vec<Requirement> = paths
+            .par_iter()
+            .map(|path| {
+                let hrid = path.file_stem().unwrap().to_string_lossy().to_string();
+                let directory = path.parent().unwrap().to_path_buf();
+                Requirement::load(&directory, hrid).unwrap() // TODO: handle error properly
             })
             .collect();
 
-        for requirement in requirements {
-            tree.insert(requirement);
+        let mut tree = Tree::default();
+
+        for req in requirements {
+            tree.insert(req);
         }
 
         Directory {
