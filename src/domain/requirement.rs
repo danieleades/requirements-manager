@@ -19,7 +19,7 @@ mod storage;
 /// It can represent a user requirement, a specification, etc.
 /// Requirements can have dependencies between them, such that one requirement
 /// satisfies, fulfils, verifies (etc.) another requirement.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Requirement {
     content: Content,
     metadata: Metadata,
@@ -28,7 +28,7 @@ pub struct Requirement {
 /// The semantically important content of the requirement.
 ///
 /// This contributes to the 'fingerprint' of the requirement
-#[derive(Debug, BorshSerialize, Clone)]
+#[derive(Debug, BorshSerialize, Clone, PartialEq)]
 struct Content {
     content: String,
     tags: BTreeSet<String>,
@@ -50,7 +50,7 @@ impl Content {
 /// Requirement metadata.
 ///
 /// Does not contribute to the requirement fingerprint.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Metadata {
     /// Globally unique, perpetually stable identifier
     uuid: Uuid,
@@ -64,7 +64,7 @@ struct Metadata {
     parents: HashMap<Uuid, Parent>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parent {
     pub hrid: String,
     pub fingerprint: String,
@@ -76,13 +76,17 @@ impl Requirement {
     /// A new UUID is automatically generated.
     #[must_use]
     pub fn new(hrid: String, content: String) -> Self {
+        Self::new_with_uuid(hrid, content, Uuid::new_v4())
+    }
+
+    pub(crate) fn new_with_uuid(hrid: String, content: String, uuid: Uuid) -> Self {
         let content = Content {
             content,
             tags: BTreeSet::default(),
         };
 
         let metadata = Metadata {
-            uuid: Uuid::new_v4(),
+            uuid,
             hrid,
             created: Utc::now(),
             parents: HashMap::new(),
@@ -153,6 +157,22 @@ impl Requirement {
     /// Add a parent to the requirement, keyed by UUID.
     pub fn add_parent(&mut self, parent_id: Uuid, parent_info: Parent) -> Option<Parent> {
         self.metadata.parents.insert(parent_id, parent_info)
+    }
+
+    /// Return an iterator over the requirement's 'parents'
+    pub fn parents(&self) -> impl Iterator<Item = (Uuid, &Parent)> {
+        self.metadata
+            .parents
+            .iter()
+            .map(|(&id, parent)| (id, parent))
+    }
+
+    /// Return a mutable iterator over the requirement's 'parents'
+    pub fn parents_mut(&mut self) -> impl Iterator<Item = (Uuid, &mut Parent)> {
+        self.metadata
+            .parents
+            .iter_mut()
+            .map(|(&id, parent)| (id, parent))
     }
 
     /// Reads a requirement from the given file path.

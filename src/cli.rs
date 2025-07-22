@@ -9,7 +9,7 @@ use crate::storage::Directory;
 #[command(version, about)]
 pub struct Cli {
     /// Verbosity (-v, -vv, -vvv)
-    #[arg(short, long, action = ArgAction::Count)]
+    #[arg(short, long, action = ArgAction::Count, global=true)]
     verbose: u8,
 
     #[command(subcommand)]
@@ -33,14 +33,13 @@ impl Cli {
             _ => tracing::Level::TRACE,
         };
 
-        let filter = tracing_subscriber::EnvFilter::from_default_env()
-            .add_directive(level.into());
+        let filter = tracing_subscriber::EnvFilter::from_default_env().add_directive(level.into());
 
         let fmt_layer = tracing_subscriber::fmt::layer()
-            .pretty()
+            //.pretty()
             .with_target(false)
             .with_thread_names(false)
-            .with_line_number(true);
+            .with_line_number(false);
 
         tracing_subscriber::registry()
             .with(filter)
@@ -58,6 +57,9 @@ pub enum Command {
     ///
     /// Links are parent-child relationships.
     Link(Link),
+
+    /// Correct parent HRIDs
+    Clean(Clean),
 }
 
 impl Command {
@@ -65,6 +67,7 @@ impl Command {
         match self {
             Self::Add(command) => command.run(),
             Self::Link(command) => command.run(),
+            Self::Clean(command) => command.run(),
         }
     }
 }
@@ -84,7 +87,7 @@ pub struct Add {
 impl Add {
     #[instrument]
     fn run(self) {
-        let directory = Directory::open(self.root);
+        let directory = Directory::new(self.root);
         directory.add_requirement(&self.kind);
     }
 }
@@ -105,7 +108,21 @@ pub struct Link {
 impl Link {
     #[instrument]
     fn run(self) {
-        let directory = Directory::open(self.root);
+        let directory = Directory::new(self.root);
         directory.link_requirement(self.child, self.parent);
+    }
+}
+
+#[derive(Debug, clap::Parser)]
+pub struct Clean {
+    /// The path to the root of the requirements directory
+    #[arg(short, long, default_value = ".")]
+    root: PathBuf,
+}
+
+impl Clean {
+    #[instrument(skip(self))]
+    fn run(self) {
+        Directory::new(self.root).load_all().update_hrids();
     }
 }

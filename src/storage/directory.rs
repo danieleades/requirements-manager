@@ -1,0 +1,118 @@
+//! A filesystem backed store of requirements
+//!
+//! The [`Directory`] provides a way to manage requirements stored in a directory structure.
+//! It is a wrapper around the filesystem agnostic [`Tree`].
+
+use std::{ffi::OsStr, path::PathBuf};
+
+use walkdir::WalkDir;
+
+use crate::{
+    Requirement,
+    domain::{
+        Index,
+        requirement::{LoadError, Parent},
+    },
+};
+
+pub use crate::storage::Tree;
+
+#[derive(Debug, PartialEq)]
+pub struct Loaded(Tree);
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Unloaded;
+
+/// A filesystem backed store of requirements.
+pub struct Directory<S> {
+    /// The root of the directory requirements are stored in.
+    root: PathBuf,
+    state: S,
+}
+
+impl Directory<Unloaded> {
+    /// Opens a directory at the given path.
+    pub const fn new(root: PathBuf) -> Self {
+        Self {
+            root,
+            state: Unloaded,
+        }
+    }
+
+    pub fn load_all(self) -> Directory<Loaded> {
+        let mut tree = Tree::default();
+
+        let paths = WalkDir::new(&self.root)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension() == Some(OsStr::new("md")))
+            .map(walkdir::DirEntry::into_path);
+
+        for path in paths {
+            let hrid = path.file_stem().unwrap().to_string_lossy().to_string();
+
+            let directory = path.parent().unwrap().to_path_buf();
+
+            let requirement = Requirement::load(&directory, hrid.clone()).unwrap();
+
+            tree.insert(requirement);
+        }
+
+        Directory {
+            root: self.root,
+            state: Loaded(tree),
+        }
+    }
+
+    pub fn add_requirement(&self, kind: &str) {
+        let index_path = self.root.join(".index.toml");
+
+        let mut index = Index::load(&index_path).unwrap_or_else(|e| {
+            println!("Failed to load index: {e}");
+            Index::default()
+        });
+
+        let idx = index.bump_index(kind.to_string());
+
+        let requirement = Requirement::new(format!("{kind}-{idx}"), String::new());
+
+        requirement.save(&self.root).unwrap();
+
+        index.save(&index_path).unwrap();
+    }
+
+    pub fn link_requirement(&self, child: String, parent: String) {
+        let mut child = self.load_requirement(child).unwrap().unwrap();
+        let parent = self.load_requirement(parent).unwrap().unwrap();
+
+        child.add_parent(
+            parent.uuid(),
+            Parent {
+                hrid: parent.hrid().to_string(),
+                fingerprint: parent.fingerprint(),
+            },
+        );
+
+        child.save(&self.root).unwrap();
+    }
+
+    fn load_requirement(&self, hrid: String) -> Option<Result<Requirement, LoadError>> {
+        match Requirement::load(&self.root, hrid) {
+            Ok(requirement) => Some(Ok(requirement)),
+            Err(LoadError::NotFound) => None,
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
+impl Directory<Loaded> {
+    pub fn update_hrids(&mut self) {
+        let tree = &mut self.state.0;
+        let updated: Vec<_> = tree.update_hrids().collect();
+
+        for id in updated {
+            let requirement = tree.requirement(id).unwrap();
+            requirement.save(&self.root).unwrap();
+        }
+    }
+}
