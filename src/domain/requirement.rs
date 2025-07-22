@@ -76,13 +76,17 @@ impl Requirement {
     /// A new UUID is automatically generated.
     #[must_use]
     pub fn new(hrid: String, content: String) -> Self {
+        Self::new_with_uuid(hrid, content, Uuid::new_v4())
+    }
+
+    pub(crate) fn new_with_uuid(hrid: String, content: String, uuid: Uuid) -> Self {
         let content = Content {
             content,
             tags: BTreeSet::default(),
         };
 
         let metadata = Metadata {
-            uuid: Uuid::new_v4(),
+            uuid,
             hrid,
             created: Utc::now(),
             parents: HashMap::new(),

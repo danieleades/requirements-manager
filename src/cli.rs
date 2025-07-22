@@ -87,7 +87,7 @@ pub struct Add {
 impl Add {
     #[instrument]
     fn run(self) {
-        let directory = Directory::open(self.root);
+        let directory = Directory::new(self.root);
         directory.add_requirement(&self.kind);
     }
 }
@@ -108,7 +108,7 @@ pub struct Link {
 impl Link {
     #[instrument]
     fn run(self) {
-        let directory = Directory::open(self.root);
+        let directory = Directory::new(self.root);
         directory.link_requirement(self.child, self.parent);
     }
 }
@@ -123,8 +123,6 @@ pub struct Clean {
 impl Clean {
     #[instrument(skip(self))]
     fn run(self) {
-        let mut directory = Directory::open(self.root);
-        directory.load_all();
-        directory.update_hrids();
+        Directory::new(self.root).load_all().update_hrids();
     }
 }

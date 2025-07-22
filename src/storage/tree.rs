@@ -1,3 +1,8 @@
+//! An in-memory tree structure for requirements
+//!
+//! The [`Tree`] knows nothing about the filesystem or the directory structure.
+//! It is a simple in-memory representation of the requirements and their relationships.
+
 use std::{cmp::Ordering, collections::HashMap};
 use tracing::instrument;
 use uuid::Uuid;
@@ -12,6 +17,9 @@ pub struct Tree {
 
     /// An index from UUID to position in `requirements`.
     index: HashMap<Uuid, usize>,
+
+    /// for HRID → UUID resolution, non-authoritative
+    hrid_index: HashMap<String, Uuid>,
 }
 
 impl Tree {
@@ -76,5 +84,121 @@ impl Tree {
                 .any(|was_updated| *was_updated)
                 .then_some(uuid)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+
+    use crate::Requirement;
+    use crate::storage::Tree;
+
+    fn make_requirement(uuid: Uuid, hrid: &str, parents: Vec<(Uuid, String)>) -> Requirement {
+        let mut req = Requirement::new_with_uuid(hrid.to_string(), String::new(), uuid);
+        for (parent_uuid, parent_hrid) in parents {
+            req.add_parent(
+                parent_uuid,
+                crate::domain::requirement::Parent {
+                    hrid: parent_hrid,
+                    fingerprint: String::new(),
+                },
+            );
+        }
+        req
+    }
+
+    #[test]
+    fn test_insert_and_lookup() {
+        let mut tree = Tree::default();
+        let uuid = Uuid::new_v4();
+        let req = make_requirement(uuid, "R-001", vec![]);
+        tree.insert(req);
+
+        let retrieved = tree.requirement(uuid).unwrap();
+        assert_eq!(retrieved.uuid(), uuid);
+        assert_eq!(retrieved.hrid(), "R-001");
+    }
+
+    #[test]
+    #[should_panic(expected = "Duplicate requirement UUID")]
+    fn test_insert_duplicate_uuid_panics() {
+        let mut tree = Tree::default();
+        let uuid = Uuid::new_v4();
+        let req1 = make_requirement(uuid, "R-001", vec![]);
+        let req2 = make_requirement(uuid, "R-002", vec![]);
+        tree.insert(req1);
+        tree.insert(req2); // should panic
+    }
+
+    #[test]
+    fn test_update_hrids_corrects_parent_hrids() {
+        let mut tree = Tree::default();
+        let parent_uuid = Uuid::new_v4();
+        let child_uuid = Uuid::new_v4();
+
+        let parent = make_requirement(parent_uuid, "P-001", vec![]);
+        let child = make_requirement(
+            child_uuid,
+            "C-001",
+            vec![(parent_uuid, "WRONG".to_string())],
+        );
+
+        tree.insert(parent);
+        tree.insert(child);
+
+        let updated: Vec<_> = tree.update_hrids().collect();
+        assert_eq!(updated, vec![child_uuid]);
+
+        let updated_child = tree.requirement(child_uuid).unwrap();
+        let (_, actual_parent) = updated_child.parents().next().unwrap();
+        assert_eq!(actual_parent.hrid, "P-001");
+    }
+
+    #[test]
+    fn test_update_hrids_no_change() {
+        let mut tree = Tree::default();
+        let parent_uuid = Uuid::new_v4();
+        let child_uuid = Uuid::new_v4();
+
+        let parent = make_requirement(parent_uuid, "P-001", vec![]);
+        let child = make_requirement(
+            child_uuid,
+            "C-001",
+            vec![(parent_uuid, "P-001".to_string())],
+        );
+
+        tree.insert(parent);
+        tree.insert(child);
+
+        let updated = tree.update_hrids();
+        assert!(updated.count() == 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Parent requirement")]
+    fn test_update_hrids_missing_parent_panics() {
+        let mut tree = Tree::default();
+        let missing_uuid = Uuid::new_v4();
+        let child_uuid = Uuid::new_v4();
+        let child = make_requirement(
+            child_uuid,
+            "C-001",
+            vec![(missing_uuid, "UNKNOWN".to_string())],
+        );
+
+        tree.insert(child);
+        let _ = tree.update_hrids().collect::<Vec<_>>();
+    }
+
+    #[test]
+    #[should_panic(expected = "is its own parent")]
+    fn test_update_hrids_self_parent_panics() {
+        let mut tree = Tree::default();
+        let uuid = Uuid::new_v4();
+        let req = make_requirement(uuid, "SELF", vec![(uuid, "SELF".to_string())]);
+
+        tree.insert(req);
+        let _ = tree.update_hrids().collect::<Vec<_>>();
     }
 }

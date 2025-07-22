@@ -1,3 +1,8 @@
+//! A filesystem backed store of requirements
+//!
+//! The [`Directory`] provides a way to manage requirements stored in a directory structure.
+//! It is a wrapper around the filesystem agnostic [`Tree`].
+
 use std::{ffi::OsStr, path::PathBuf};
 
 use walkdir::WalkDir;
@@ -13,27 +18,28 @@ use crate::{
 pub use crate::storage::Tree;
 
 #[derive(Debug, PartialEq)]
-pub enum State {
-    Unloaded,
-    Loaded(Tree),
-}
+pub struct Loaded(Tree);
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Unloaded;
 
 /// A filesystem backed store of requirements.
-pub struct Directory {
+pub struct Directory<S> {
     /// The root of the directory requirements are stored in.
     root: PathBuf,
-    state: State,
+    state: S,
 }
 
-impl Directory {
-    pub const fn open(root: PathBuf) -> Self {
+impl Directory<Unloaded> {
+    /// Opens a directory at the given path.
+    pub const fn new(root: PathBuf) -> Self {
         Self {
             root,
-            state: State::Unloaded,
+            state: Unloaded,
         }
     }
 
-    pub fn load_all(&mut self) {
+    pub fn load_all(self) -> Directory<Loaded> {
         let mut tree = Tree::default();
 
         let paths = WalkDir::new(&self.root)
@@ -52,7 +58,10 @@ impl Directory {
             tree.insert(requirement);
         }
 
-        self.state = State::Loaded(tree);
+        Directory {
+            root: self.root,
+            state: Loaded(tree),
+        }
     }
 
     pub fn add_requirement(&self, kind: &str) {
@@ -94,20 +103,16 @@ impl Directory {
             Err(e) => Some(Err(e)),
         }
     }
+}
 
+impl Directory<Loaded> {
     pub fn update_hrids(&mut self) {
-        if self.state == State::Unloaded {
-            self.load_all();
-        }
-        if let State::Loaded(tree) = &mut self.state {
-            let updated: Vec<_> = tree.update_hrids().collect();
+        let tree = &mut self.state.0;
+        let updated: Vec<_> = tree.update_hrids().collect();
 
-            for id in updated {
-                let requirement = tree.requirement(id).unwrap();
-                requirement.save(&self.root).unwrap();
-            }
-        } else {
-            unreachable!()
+        for id in updated {
+            let requirement = tree.requirement(id).unwrap();
+            requirement.save(&self.root).unwrap();
         }
     }
 }
