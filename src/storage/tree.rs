@@ -23,6 +23,14 @@ pub struct Tree {
 }
 
 impl Tree {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            requirements: Vec::with_capacity(capacity),
+            index: HashMap::with_capacity(capacity),
+            next_indices: HashMap::new(),
+        }
+    }
+
     /// Inserts a requirement into the tree.
     /// Panics if a requirement with the same UUID already exists.
     pub fn insert(&mut self, requirement: Requirement) {

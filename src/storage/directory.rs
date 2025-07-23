@@ -85,7 +85,7 @@ impl Directory<Unloaded> {
             })
             .collect();
 
-        let mut tree = Tree::default();
+        let mut tree = Tree::with_capacity(requirements.len());
 
         for req in requirements {
             tree.insert(req);
