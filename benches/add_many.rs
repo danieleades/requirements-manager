@@ -5,7 +5,7 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use req::Directory;
+use requiem::Directory;
 use tempfile::TempDir;
 
 fn preseed_directory(path: &std::path::Path, n: usize) {

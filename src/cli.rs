@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::ArgAction;
 use tracing::instrument;
 
-use req::Directory;
+use requiem::Directory;
 
 #[derive(Debug, clap::Parser)]
 #[command(version, about)]
