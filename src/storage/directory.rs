@@ -137,3 +137,103 @@ impl Directory<Loaded> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Requirement;
+    use tempfile::TempDir;
+
+    fn setup_temp_directory() -> (TempDir, Directory<Loaded>) {
+        let tmp = TempDir::new().expect("failed to create temp dir");
+        let path = tmp.path().to_path_buf();
+        (tmp, Directory::new(path).load_all())
+    }
+
+    #[test]
+    fn can_add_requirement() {
+        let (_tmp, mut dir) = setup_temp_directory();
+        let r1 = dir.add_requirement("REQ".to_string());
+
+        assert_eq!(r1.hrid().to_string(), "REQ-001");
+
+        let loaded = Requirement::load(&dir.root, r1.hrid().to_string())
+            .expect("should load saved requirement");
+        assert_eq!(loaded.uuid(), r1.uuid());
+    }
+
+    #[test]
+    fn can_add_multiple_requirements_with_incrementing_id() {
+        let (_tmp, mut dir) = setup_temp_directory();
+        let r1 = dir.add_requirement("REQ".to_string());
+        let r2 = dir.add_requirement("REQ".to_string());
+
+        assert_eq!(r1.hrid().to_string(), "REQ-001");
+        assert_eq!(r2.hrid().to_string(), "REQ-002");
+    }
+
+    #[test]
+    fn can_link_two_requirements() {
+        let (_tmp, mut dir) = setup_temp_directory();
+        let parent = dir.add_requirement("SYS".to_string());
+        let child = dir.add_requirement("USR".to_string());
+
+        Directory::new(dir.root.clone())
+            .link_requirement(child.hrid().to_string(), parent.hrid().to_string());
+
+        let updated =
+            Requirement::load(&dir.root, child.hrid().to_string()).expect("should load child");
+
+        let parents: Vec<_> = updated.parents().collect();
+        assert_eq!(parents.len(), 1);
+        assert_eq!(parents[0].0, parent.uuid());
+        assert_eq!(&parents[0].1.hrid, parent.hrid());
+    }
+
+    #[test]
+    fn update_hrids_corrects_outdated_parent_hrids() {
+        let (_tmp, mut dir) = setup_temp_directory();
+        let parent = dir.add_requirement("P".to_string());
+        let mut child = dir.add_requirement("C".to_string());
+
+        // Manually corrupt HRID in child's parent info
+        child.add_parent(
+            parent.uuid(),
+            Parent {
+                hrid: Hrid::try_from("WRONG-999").unwrap(),
+                fingerprint: parent.fingerprint(),
+            },
+        );
+        child.save(&dir.root).unwrap();
+
+        let mut loaded_dir = Directory::new(dir.root.clone()).load_all();
+        loaded_dir.update_hrids();
+
+        let updated = Requirement::load(&loaded_dir.root, child.hrid().to_string())
+            .expect("should load updated child");
+        let (_, parent_ref) = updated.parents().next().unwrap();
+
+        assert_eq!(&parent_ref.hrid, parent.hrid());
+    }
+
+    #[test]
+    fn load_all_reads_all_saved_requirements() {
+        let (_tmp, mut dir) = setup_temp_directory();
+        let r1 = dir.add_requirement("X".to_string());
+        let r2 = dir.add_requirement("X".to_string());
+
+        let loaded = Directory::new(dir.root.clone()).load_all();
+
+        let mut found = 0;
+        for i in 1..=2 {
+            let hrid = format!("X-00{i}");
+            dbg!(&hrid);
+            let req = Requirement::load(&loaded.root, hrid).unwrap();
+            if req.uuid() == r1.uuid() || req.uuid() == r2.uuid() {
+                found += 1;
+            }
+        }
+
+        assert_eq!(found, 2);
+    }
+}
