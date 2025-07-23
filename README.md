@@ -46,12 +46,18 @@ Quick start:
 # Create a new requirements directory
 mkdir my-requirements && cd my-requirements
 
-# add a couple of user requirement
+# add a couple of user requirements
 req add USR  # adds requirement USR-001
 req add USR  # adds requirement USR-002
 
-# add a system requirement that depends on a user requirement
-req add SYS --parents USR-001  # adds requirement SYS-001, with a link to USR-001
+# add a system requirement
+req add SYS  # adds requirement SYS-001
+
+# link SYS-001 to USR-001
+req link SYS-001 USR-001
+
+# add a system requirement that depends on multiple user requirements
+req add SYS --parents USR-001,USR-002  # adds requirement SYS-002, with links to USR-001 and USR-002
 ```
 
 ---
