@@ -3,7 +3,7 @@
 //! The [`Directory`] provides a way to manage requirements stored in a directory structure.
 //! It is a wrapper around the filesystem agnostic [`Tree`].
 
-use std::{ffi::OsStr, path::PathBuf, sync::Mutex};
+use std::{ffi::OsStr, path::PathBuf};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use walkdir::WalkDir;
@@ -12,7 +12,7 @@ use crate::{
     Requirement,
     domain::{
         Config, Hrid,
-        requirement::{self, LoadError, Parent},
+        requirement::{LoadError, Parent},
     },
 };
 
@@ -32,6 +32,7 @@ pub struct Directory<S> {
 }
 
 impl<S> Directory<S> {
+    /// Link two requirements together with a parent-child relationship.
     pub fn link_requirement(&self, child: String, parent: String) {
         let mut child = self.load_requirement(child).unwrap().unwrap();
         let parent = self.load_requirement(parent).unwrap().unwrap();
@@ -58,6 +59,7 @@ impl<S> Directory<S> {
 
 impl Directory<Unloaded> {
     /// Opens a directory at the given path.
+    #[must_use]
     pub const fn new(root: PathBuf) -> Self {
         Self {
             root,
@@ -65,6 +67,7 @@ impl Directory<Unloaded> {
         }
     }
 
+    /// Load all requirements from disk
     pub fn load_all(self) -> Directory<Loaded> {
         let paths: Vec<_> = WalkDir::new(&self.root)
             .into_iter()
@@ -96,6 +99,7 @@ impl Directory<Unloaded> {
 }
 
 impl Directory<Loaded> {
+    /// Add a new requirement to the directory.
     pub fn add_requirement(&mut self, kind: String) -> Requirement {
         let config_path = self.root.join("config.toml");
 
@@ -117,12 +121,18 @@ impl Directory<Loaded> {
 
         requirement
     }
+
+    /// Update the human-readable IDs (HRIDs) of all 'parents' references in the requirements.
+    ///
+    /// These can become out of sync if requirement files are renamed.
     pub fn update_hrids(&mut self) {
         let tree = &mut self.state.0;
         let updated: Vec<_> = tree.update_hrids().collect();
 
         for id in updated {
-            let requirement = tree.requirement(id).unwrap();
+            let requirement = tree
+                .requirement(id)
+                .expect("this just got updated, so we know it exists");
             requirement.save(&self.root).unwrap();
         }
     }
