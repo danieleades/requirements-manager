@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn empty_file_returns_default() {
-        // Tests that derialising an empty file returns the default configuration.
+        // Tests that deserialising an empty file returns the default configuration.
         let expected = Config::default();
         let actual: Config = toml::from_str(r#"_version = "1""#).unwrap();
         assert_eq!(actual, expected);

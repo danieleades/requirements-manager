@@ -713,6 +713,7 @@ dependencies = [
  "chrono",
  "clap",
  "criterion",
+ "rayon",
  "serde",
  "serde_yaml",
  "sha2",
