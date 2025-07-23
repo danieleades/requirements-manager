@@ -39,3 +39,21 @@ The most up-to-date documentation for the command line interface can be found by
 ```sh
 req --help
 ```
+
+Quick start:
+
+```sh
+# Create a new requirements directory
+mkdir my-requirements && cd my-requirements
+
+# add a couple of user requirement
+req add USR  # adds requirement USR-001
+req add USR  # adds requirement USR-002
+
+# add a system requirement that depends on a user requirement
+req add SYS --parents USR-001  # adds requirement SYS-001, with a link to USR-001
+```
+
+---
+
+*Was this useful? [Buy me a coffee](https://github.com/sponsors/danieleades/sponsorships?sponsor=danieleades&preview=true&frequency=recurring&amount=5)*
