@@ -115,7 +115,7 @@ impl Directory<Loaded> {
 
         let id = tree.next_index(&kind);
 
-        let requirement = Requirement::new(Hrid { kind, id }, String::new());
+        let requirement = Requirement::new(Hrid::new(kind, id).unwrap(), String::new());
 
         requirement.save(&self.root).unwrap();
         tree.insert(requirement.clone());
