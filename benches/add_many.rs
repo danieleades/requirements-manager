@@ -4,7 +4,7 @@
 
 use std::hint::black_box;
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use requiem::Directory;
 use tempfile::TempDir;
 
@@ -18,28 +18,40 @@ fn preseed_directory(path: &std::path::Path, n: usize) {
 
 fn load_all(c: &mut Criterion) {
     c.bench_function("load directory pre-seeded with requirements", |b| {
-        let tmp_dir = TempDir::new().unwrap();
-        preseed_directory(tmp_dir.path(), 1000);
-
-        b.iter(|| {
-            let _loaded = Directory::new(tmp_dir.path().to_path_buf()).load_all();
-        });
+        b.iter_batched(
+            || {
+                // Setup: create and pre-seed directory
+                let tmp_dir = TempDir::new().unwrap();
+                preseed_directory(tmp_dir.path(), 1000);
+                tmp_dir
+            },
+            |tmp_dir| {
+                let _loaded = Directory::new(tmp_dir.path().to_path_buf()).load_all();
+            },
+            BatchSize::SmallInput,
+        );
     });
 }
 
 fn add_single_requirement_to_populated_dir(c: &mut Criterion) {
     c.bench_function("add one requirement to a pre-seeded directory", |b| {
-        let tmp_dir = TempDir::new().expect("Failed to create temp dir");
-
-        // Pre-populate with requirements
-        preseed_directory(tmp_dir.path(), 1000);
-
-        b.iter(|| {
-            // Benchmark one additional insert
-            Directory::new(tmp_dir.path().to_path_buf())
-                .load_all()
-                .add_requirement(black_box("R".to_string()));
-        });
+        b.iter_batched(
+            || {
+                // Setup: create fresh directory for each iteration
+                let tmp_dir = TempDir::new().expect("Failed to create temp dir");
+                preseed_directory(tmp_dir.path(), 1000);
+                tmp_dir
+            },
+            |tmp_dir| {
+                // Note this routine deliberately includes the step to load the requirements
+                // from disk, since this represents the true end-to-end user
+                // workflow.
+                Directory::new(tmp_dir.path().to_path_buf())
+                    .load_all()
+                    .add_requirement(black_box("R".to_string()));
+            },
+            BatchSize::SmallInput,
+        );
     });
 }
 

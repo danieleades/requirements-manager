@@ -1,13 +1,15 @@
 //! An in-memory tree structure for requirements
 //!
 //! The [`Tree`] knows nothing about the filesystem or the directory structure.
-//! It is a simple in-memory representation of the requirements and their relationships.
+//! It is a simple in-memory representation of the requirements and their
+//! relationships.
 
 use std::{cmp::Ordering, collections::HashMap};
+
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::{Requirement, domain::Hrid};
+use crate::{domain::Hrid, Requirement};
 
 /// An in-memory representation of the set of requirements
 #[derive(Debug, Default, PartialEq)]
@@ -41,7 +43,8 @@ impl Tree {
         );
         let index = self.requirements.len();
 
-        // Update the current index for the requirement's kind to the larger of its current value or the index of the incoming requirement.
+        // Update the current index for the requirement's kind to the larger of its
+        // current value or the index of the incoming requirement.
         let Hrid { kind, id: suffix } = requirement.hrid();
 
         self.next_indices
@@ -106,7 +109,8 @@ impl Tree {
     /// Returns the next available index for a requirement of the given kind.
     ///
     /// This is one greater than the highest index currently used for that kind.
-    /// No attempt is made to 'recycle' indices if there are gaps in the sequence.
+    /// No attempt is made to 'recycle' indices if there are gaps in the
+    /// sequence.
     pub fn next_index(&self, kind: &str) -> usize {
         self.next_indices.get(kind).copied().unwrap_or(1)
     }
@@ -116,9 +120,7 @@ impl Tree {
 mod tests {
     use uuid::Uuid;
 
-    use crate::Requirement;
-    use crate::domain::Hrid;
-    use crate::storage::Tree;
+    use crate::{domain::Hrid, storage::Tree, Requirement};
 
     fn make_requirement(uuid: Uuid, hrid: Hrid, parents: Vec<(Uuid, Hrid)>) -> Requirement {
         let mut req = Requirement::new_with_uuid(hrid, String::new(), uuid);

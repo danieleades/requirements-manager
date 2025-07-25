@@ -3,7 +3,7 @@
 //! Requirements are markdown documents stored in a directory.
 
 mod domain;
-pub use domain::Requirement;
+pub use domain::{Hrid, Requirement};
 
 mod storage;
 pub use storage::Directory;

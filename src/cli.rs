@@ -1,9 +1,8 @@
 use std::path::PathBuf;
 
 use clap::ArgAction;
-use tracing::instrument;
-
 use requiem::Directory;
+use tracing::instrument;
 
 #[derive(Debug, clap::Parser)]
 #[command(version, about)]
@@ -95,8 +94,8 @@ impl Add {
         let requirement = directory.add_requirement(self.kind);
 
         for parent in self.parent {
-            // TODO: the linkage should be done before the requirement is saved by the 'add_requirement' method
-            // to avoid unnecessary IO.
+            // TODO: the linkage should be done before the requirement is saved by the
+            // 'add_requirement' method to avoid unnecessary IO.
             directory.link_requirement(requirement.hrid().to_string(), parent);
         }
 
