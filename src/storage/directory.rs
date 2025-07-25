@@ -1,22 +1,22 @@
 //! A filesystem backed store of requirements
 //!
-//! The [`Directory`] provides a way to manage requirements stored in a directory structure.
-//! It is a wrapper around the filesystem agnostic [`Tree`].
+//! The [`Directory`] provides a way to manage requirements stored in a
+//! directory structure. It is a wrapper around the filesystem agnostic
+//! [`Tree`].
 
 use std::{ffi::OsStr, path::PathBuf};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use walkdir::WalkDir;
 
-use crate::{
-    Requirement,
-    domain::{
-        Config, Hrid,
-        requirement::{LoadError, Parent},
-    },
-};
-
 pub use crate::storage::Tree;
+use crate::{
+    domain::{
+        requirement::{LoadError, Parent},
+        Config, Hrid,
+    },
+    Requirement,
+};
 
 #[derive(Debug, PartialEq)]
 pub struct Loaded(Tree);
@@ -33,7 +33,7 @@ pub struct Directory<S> {
 
 impl<S> Directory<S> {
     /// Link two requirements together with a parent-child relationship.
-    pub fn link_requirement(&self, child: String, parent: String) {
+    pub fn link_requirement(&self, child: String, parent: String) -> Requirement {
         let mut child = self.load_requirement(child).unwrap().unwrap();
         let parent = self.load_requirement(parent).unwrap().unwrap();
 
@@ -46,6 +46,8 @@ impl<S> Directory<S> {
         );
 
         child.save(&self.root).unwrap();
+
+        child
     }
 
     fn load_requirement(&self, hrid: String) -> Option<Result<Requirement, LoadError>> {
@@ -81,7 +83,8 @@ impl Directory<Unloaded> {
             .map(|path| {
                 let hrid = path.file_stem().unwrap().to_string_lossy().to_string();
                 let directory = path.parent().unwrap().to_path_buf();
-                Requirement::load(&directory, hrid).unwrap() // TODO: handle error properly
+                Requirement::load(&directory, hrid).unwrap() // TODO: handle
+                                                             // error properly
             })
             .collect();
 
@@ -122,7 +125,8 @@ impl Directory<Loaded> {
         requirement
     }
 
-    /// Update the human-readable IDs (HRIDs) of all 'parents' references in the requirements.
+    /// Update the human-readable IDs (HRIDs) of all 'parents' references in the
+    /// requirements.
     ///
     /// These can become out of sync if requirement files are renamed.
     pub fn update_hrids(&mut self) {
@@ -140,9 +144,10 @@ impl Directory<Loaded> {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::TempDir;
+
     use super::*;
     use crate::Requirement;
-    use tempfile::TempDir;
 
     fn setup_temp_directory() -> (TempDir, Directory<Loaded>) {
         let tmp = TempDir::new().expect("failed to create temp dir");

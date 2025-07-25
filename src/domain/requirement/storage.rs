@@ -9,12 +9,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::{
-    Hrid, hrid,
-    requirement::{Content, Metadata},
-};
-
 use super::Requirement;
+use crate::domain::{
+    hrid,
+    requirement::{Content, Metadata},
+    Hrid,
+};
 
 #[derive(Debug, Clone)]
 pub struct MarkdownRequirement {
@@ -73,7 +73,8 @@ impl MarkdownRequirement {
     /// Writes the requirement to the given file path.
     /// Creates the file if it doesn't exist, or overwrites it if it does.
     ///
-    /// Note the path here is the path to the directory. The filename is determined by the HRID
+    /// Note the path here is the path to the directory. The filename is
+    /// determined by the HRID
     pub fn save(&self, path: &Path) -> io::Result<()> {
         let file = File::create(path.join(&self.hrid).with_extension("md"))?;
         let mut writer = BufWriter::new(file);
@@ -83,7 +84,8 @@ impl MarkdownRequirement {
     /// Reads a requirement from the given file path.
     ///
     ///
-    /// Note the path here is the path to the directory. The filename is determined by the HRID
+    /// Note the path here is the path to the directory. The filename is
+    /// determined by the HRID
     pub fn load(path: &Path, hrid: String) -> Result<Self, LoadError> {
         let file =
             File::open(path.join(&hrid).with_extension("md")).map_err(|io_error| match io_error
@@ -256,11 +258,12 @@ impl TryFrom<MarkdownRequirement> for Requirement {
 
 #[cfg(test)]
 mod tests {
-    use super::Parent;
-    use super::*;
-    use chrono::TimeZone;
     use std::io::Cursor;
+
+    use chrono::TimeZone;
     use tempfile::TempDir;
+
+    use super::{Parent, *};
 
     fn create_test_frontmatter() -> FrontMatter {
         let uuid = Uuid::parse_str("12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53").unwrap();
@@ -547,11 +550,9 @@ Content here
 
         assert!(requirement.frontmatter.tags.contains("tag with spaces"));
         assert!(requirement.frontmatter.tags.contains("tag-with-dashes"));
-        assert!(
-            requirement
-                .frontmatter
-                .tags
-                .contains("tag_with_underscores")
-        );
+        assert!(requirement
+            .frontmatter
+            .tags
+            .contains("tag_with_underscores"));
     }
 }

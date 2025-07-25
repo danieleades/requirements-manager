@@ -45,7 +45,8 @@ const fn default_digits() -> usize {
 }
 
 /// The serialized versions of the configuration.
-/// This allows for future changes to the configuration format and to the domain type without breaking compatibility.
+/// This allows for future changes to the configuration format and to the domain
+/// type without breaking compatibility.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "_version")]
 enum Versions {
