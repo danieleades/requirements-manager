@@ -77,6 +77,30 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
 
+  example-mdbook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mdBook
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook
+
+      - name: Build mdBook example
+        run: mdbook build
+        working-directory: examples/mdbook
+
+  example-sphinx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build Sphinx example
+        run: uv run make SPHINXOPTS="-W --keep-going -n" html
+        working-directory: examples/sphinx
+          
+
   dependabot:
     needs:
       [
@@ -87,6 +111,8 @@ jobs:
         docs,
         cargo-deny,
         coverage,
+        example-mdbook,
+        example-sphinx,
       ]
     permissions:
       contents: write

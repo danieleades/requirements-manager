@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::ArgAction;
-use requiem::Directory;
+use requiem::{Directory, Hrid};
 use tracing::instrument;
 
 #[derive(Debug, clap::Parser)]
@@ -84,7 +84,7 @@ pub struct Add {
 
     /// The human-readable IDs of the parent requirements.
     #[clap(long, short, value_delimiter = ',')]
-    parent: Vec<String>,
+    parent: Vec<Hrid>,
 }
 
 impl Add {
@@ -96,7 +96,7 @@ impl Add {
         for parent in self.parent {
             // TODO: the linkage should be done before the requirement is saved by the
             // 'add_requirement' method to avoid unnecessary IO.
-            directory.link_requirement(requirement.hrid().to_string(), parent);
+            directory.link_requirement(requirement.hrid().clone(), parent);
         }
 
         println!("Added requirement {}", requirement.hrid());
@@ -106,10 +106,10 @@ impl Add {
 #[derive(Debug, clap::Parser)]
 pub struct Link {
     /// The human-readable ID of the child document
-    child: String,
+    child: Hrid,
 
     /// The human-readable ID of the parent document
-    parent: String,
+    parent: Hrid,
 }
 
 impl Link {
