@@ -15,8 +15,10 @@ fn preseed_directory(path: PathBuf) {
     for i in 1..=99 {
         directory.add_requirement("USR".to_string());
         directory.add_requirement("SYS".to_string());
-        let mut requirement =
-            directory.link_requirement(format!("SYS-{i:<03}"), format!("USR-{i:<03}"));
+        let mut requirement = directory.link_requirement(
+            Hrid::new("SYS".to_string(), i).unwrap(),
+            Hrid::new("USR".to_string(), i).unwrap(),
+        );
         requirement.parents_mut().next().unwrap().1.hrid = Hrid::try_from("WRONG-001").unwrap();
     }
 }

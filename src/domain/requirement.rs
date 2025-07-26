@@ -186,7 +186,7 @@ impl Requirement {
     ///
     /// Returns an error if the file does not exist, cannot be read from, or has
     /// malformed YAML frontmatter.
-    pub fn load(path: &Path, hrid: String) -> Result<Self, LoadError> {
+    pub fn load(path: &Path, hrid: Hrid) -> Result<Self, LoadError> {
         Ok(MarkdownRequirement::load(path, hrid)?.try_into()?)
     }
 

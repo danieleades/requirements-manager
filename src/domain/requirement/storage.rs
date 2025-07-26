@@ -19,7 +19,7 @@ use crate::domain::{
 #[derive(Debug, Clone)]
 pub struct MarkdownRequirement {
     frontmatter: FrontMatter,
-    hrid: String,
+    hrid: Hrid,
     content: String,
 }
 
@@ -30,7 +30,7 @@ impl MarkdownRequirement {
         writer.write_all(result.as_bytes())
     }
 
-    fn read<R: BufRead>(reader: &mut R, hrid: String) -> Result<Self, LoadError> {
+    fn read<R: BufRead>(reader: &mut R, hrid: Hrid) -> Result<Self, LoadError> {
         let mut lines = reader.lines();
 
         // Ensure frontmatter starts correctly
@@ -76,7 +76,7 @@ impl MarkdownRequirement {
     /// Note the path here is the path to the directory. The filename is
     /// determined by the HRID
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        let file = File::create(path.join(&self.hrid).with_extension("md"))?;
+        let file = File::create(path.join(self.hrid.to_string()).with_extension("md"))?;
         let mut writer = BufWriter::new(file);
         self.write(&mut writer)
     }
@@ -86,13 +86,13 @@ impl MarkdownRequirement {
     ///
     /// Note the path here is the path to the directory. The filename is
     /// determined by the HRID
-    pub fn load(path: &Path, hrid: String) -> Result<Self, LoadError> {
+    pub fn load(path: &Path, hrid: Hrid) -> Result<Self, LoadError> {
         let file =
-            File::open(path.join(&hrid).with_extension("md")).map_err(|io_error| match io_error
-                .kind()
-            {
-                io::ErrorKind::NotFound => LoadError::NotFound,
-                _ => LoadError::Io(io_error),
+            File::open(path.join(hrid.to_string()).with_extension("md")).map_err(|io_error| {
+                match io_error.kind() {
+                    io::ErrorKind::NotFound => LoadError::NotFound,
+                    _ => LoadError::Io(io_error),
+                }
             })?;
         let mut reader = BufReader::new(file);
         Self::read(&mut reader, hrid)
@@ -122,7 +122,26 @@ struct FrontMatter {
 pub struct Parent {
     uuid: Uuid,
     fingerprint: String,
-    hrid: String,
+    #[serde(
+        serialize_with = "hrid_as_string",
+        deserialize_with = "hrid_from_string"
+    )]
+    hrid: Hrid,
+}
+
+pub fn hrid_as_string<S>(hrid: &Hrid, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&hrid.to_string())
+}
+
+pub fn hrid_from_string<'de, D>(deserializer: D) -> Result<Hrid, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Hrid::try_from(s.as_str()).map_err(serde::de::Error::custom)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -196,14 +215,14 @@ impl From<Requirement> for MarkdownRequirement {
                 .map(|(uuid, super::Parent { hrid, fingerprint })| Parent {
                     uuid,
                     fingerprint,
-                    hrid: hrid.to_string(),
+                    hrid,
                 })
                 .collect(),
         };
 
         Self {
             frontmatter,
-            hrid: hrid.to_string(),
+            hrid,
             content,
         }
     }
@@ -213,14 +232,17 @@ impl TryFrom<MarkdownRequirement> for Requirement {
     type Error = hrid::Error;
 
     fn try_from(req: MarkdownRequirement) -> Result<Self, Self::Error> {
-        let FrontMatter {
-            uuid,
-            created,
-            tags,
-            parents,
-        } = req.frontmatter;
-
-        let hrid = Hrid::try_from(req.hrid.as_str())?;
+        let MarkdownRequirement {
+            hrid,
+            frontmatter:
+                FrontMatter {
+                    uuid,
+                    created,
+                    tags,
+                    parents,
+                },
+            content,
+        } = req;
 
         let parent_map = parents
             .into_iter()
@@ -228,13 +250,12 @@ impl TryFrom<MarkdownRequirement> for Requirement {
                 let Parent {
                     uuid,
                     fingerprint,
-                    hrid,
+                    hrid: parent_hrid,
                 } = parent;
-                let parsed_hrid = Hrid::try_from(hrid.as_str())?;
                 Ok((
                     uuid,
                     super::Parent {
-                        hrid: parsed_hrid,
+                        hrid: parent_hrid,
                         fingerprint,
                     },
                 ))
@@ -242,10 +263,7 @@ impl TryFrom<MarkdownRequirement> for Requirement {
             .collect::<Result<_, Self::Error>>()?;
 
         Ok(Self {
-            content: Content {
-                content: req.content,
-                tags,
-            },
+            content: Content { content, tags },
             metadata: Metadata {
                 uuid,
                 hrid,
@@ -272,7 +290,7 @@ mod tests {
         let parents = vec![Parent {
             uuid: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
             fingerprint: "fingerprint1".to_string(),
-            hrid: "REQ-PARENT-001".to_string(),
+            hrid: "REQ-PARENT-001".parse().unwrap(),
         }];
         FrontMatter {
             uuid,
@@ -284,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_markdown_round_trip() {
-        let hrid = "REQ-001";
+        let hrid = "REQ-001".parse().unwrap();
         let expected = r"---
 _version: '1'
 uuid: 12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53
@@ -304,7 +322,7 @@ This is a paragraph.
 ";
 
         let mut reader = Cursor::new(expected);
-        let requirement = MarkdownRequirement::read(&mut reader, hrid.to_string()).unwrap();
+        let requirement = MarkdownRequirement::read(&mut reader, hrid).unwrap();
 
         let mut bytes: Vec<u8> = vec![];
         requirement.write(&mut bytes).unwrap();
@@ -315,7 +333,7 @@ This is a paragraph.
 
     #[test]
     fn test_markdown_minimal_content() {
-        let hrid = "REQ-002";
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 _version: '1'
 uuid: 12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53
@@ -325,7 +343,7 @@ Just content
 ";
 
         let mut reader = Cursor::new(content);
-        let requirement = MarkdownRequirement::read(&mut reader, hrid.to_string()).unwrap();
+        let requirement = MarkdownRequirement::read(&mut reader, hrid.clone()).unwrap();
 
         assert_eq!(requirement.hrid, hrid);
         assert_eq!(requirement.content, "Just content");
@@ -335,7 +353,7 @@ Just content
 
     #[test]
     fn test_empty_content() {
-        let hrid = "REQ-003";
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 _version: '1'
 uuid: 12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53
@@ -344,14 +362,14 @@ created: 2025-07-14T07:15:00Z
 ";
 
         let mut reader = Cursor::new(content);
-        let requirement = MarkdownRequirement::read(&mut reader, hrid.to_string()).unwrap();
+        let requirement = MarkdownRequirement::read(&mut reader, hrid).unwrap();
 
         assert_eq!(requirement.content, "");
     }
 
     #[test]
     fn test_multiline_content() {
-        let hrid = "REQ-004";
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 _version: '1'
 uuid: 12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53
@@ -364,39 +382,39 @@ Line 4
 ";
 
         let mut reader = Cursor::new(content);
-        let requirement = MarkdownRequirement::read(&mut reader, hrid.to_string()).unwrap();
+        let requirement = MarkdownRequirement::read(&mut reader, hrid).unwrap();
 
         assert_eq!(requirement.content, "Line 1\nLine 2\n\nLine 4");
     }
 
     #[test]
     fn test_invalid_frontmatter_start() {
-        let hrid = "REQ-005";
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = "invalid frontmatter";
 
         let mut reader = Cursor::new(content);
-        let result = MarkdownRequirement::read(&mut reader, hrid.to_string());
+        let result = MarkdownRequirement::read(&mut reader, hrid);
 
         assert!(result.is_err());
     }
 
     #[test]
     fn test_missing_frontmatter_end() {
-        let hrid = "REQ-006";
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 uuid: 12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53
 created: 2025-07-14T07:15:00Z
 This should be content but there's no closing ---";
 
         let mut reader = Cursor::new(content);
-        let result = MarkdownRequirement::read(&mut reader, hrid.to_string());
+        let result = MarkdownRequirement::read(&mut reader, hrid);
 
         assert!(result.is_err());
     }
 
     #[test]
     fn test_invalid_yaml() {
-        let hrid = "REQ-007";
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 invalid: yaml: structure:
 created: not-a-date
@@ -404,18 +422,18 @@ created: not-a-date
 Content";
 
         let mut reader = Cursor::new(content);
-        let result = MarkdownRequirement::read(&mut reader, hrid.to_string());
+        let result = MarkdownRequirement::read(&mut reader, hrid);
 
         assert!(matches!(result, Err(LoadError::Yaml(_))));
     }
 
     #[test]
     fn test_empty_input() {
-        let hrid = "REQ-008";
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = "";
 
         let mut reader = Cursor::new(content);
-        let result = MarkdownRequirement::read(&mut reader, hrid.to_string());
+        let result = MarkdownRequirement::read(&mut reader, hrid);
 
         assert!(result.is_err());
     }
@@ -425,7 +443,7 @@ Content";
         let frontmatter = create_test_frontmatter();
         let requirement = MarkdownRequirement {
             frontmatter,
-            hrid: "REQ-009".to_string(),
+            hrid: Hrid::new("REQ".to_string(), 1).unwrap(),
             content: "Test content".to_string(),
         };
 
@@ -442,7 +460,7 @@ Content";
     fn test_save_and_load() {
         let temp_dir = TempDir::new().unwrap();
         let frontmatter = create_test_frontmatter();
-        let hrid = "REQ-010".to_string();
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = "Saved content".to_string();
 
         let requirement = MarkdownRequirement {
@@ -465,7 +483,8 @@ Content";
     #[test]
     fn test_load_nonexistent_file() {
         let temp_dir = TempDir::new().unwrap();
-        let result = MarkdownRequirement::load(temp_dir.path(), "NONEXISTENT".to_string());
+        let result =
+            MarkdownRequirement::load(temp_dir.path(), Hrid::new("REQ".to_string(), 1).unwrap());
         assert!(matches!(result, Err(LoadError::NotFound)));
     }
 
@@ -477,7 +496,7 @@ Content";
         let parents = vec![Parent {
             uuid: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
             fingerprint: "fp1".to_string(),
-            hrid: "REQ-P1".to_string(),
+            hrid: Hrid::new("REQ".to_string(), 1).unwrap(),
         }];
 
         let frontmatter = FrontMatter {
@@ -496,7 +515,7 @@ Content";
     fn test_parent_creation() {
         let uuid = Uuid::parse_str("12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53").unwrap();
         let fingerprint = "test-fingerprint".to_string();
-        let hrid = "REQ-PARENT".to_string();
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
 
         let parent = Parent {
             uuid,
@@ -511,7 +530,7 @@ Content";
 
     #[test]
     fn test_content_with_triple_dashes() {
-        let hrid = "REQ-012";
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 _version: '1'
 uuid: 12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53
@@ -522,7 +541,7 @@ And more --- here
 ";
 
         let mut reader = Cursor::new(content);
-        let requirement = MarkdownRequirement::read(&mut reader, hrid.to_string()).unwrap();
+        let requirement = MarkdownRequirement::read(&mut reader, hrid).unwrap();
 
         assert_eq!(
             requirement.content,
@@ -532,7 +551,7 @@ And more --- here
 
     #[test]
     fn test_frontmatter_with_special_characters() {
-        let hrid = "REQ-013";
+        let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r#"---
 _version: '1'
 uuid: 12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53
@@ -546,7 +565,7 @@ Content here
 "#;
 
         let mut reader = Cursor::new(content);
-        let requirement = MarkdownRequirement::read(&mut reader, hrid.to_string()).unwrap();
+        let requirement = MarkdownRequirement::read(&mut reader, hrid).unwrap();
 
         assert!(requirement.frontmatter.tags.contains("tag with spaces"));
         assert!(requirement.frontmatter.tags.contains("tag-with-dashes"));

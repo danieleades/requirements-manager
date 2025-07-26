@@ -4,7 +4,7 @@
 //! directory structure. It is a wrapper around the filesystem agnostic
 //! [`Tree`].
 
-use std::{ffi::OsStr, path::PathBuf};
+use std::{ffi::OsStr, path::PathBuf, str::FromStr};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use walkdir::WalkDir;
@@ -33,7 +33,7 @@ pub struct Directory<S> {
 
 impl<S> Directory<S> {
     /// Link two requirements together with a parent-child relationship.
-    pub fn link_requirement(&self, child: String, parent: String) -> Requirement {
+    pub fn link_requirement(&self, child: Hrid, parent: Hrid) -> Requirement {
         let mut child = self.load_requirement(child).unwrap().unwrap();
         let parent = self.load_requirement(parent).unwrap().unwrap();
 
@@ -50,7 +50,7 @@ impl<S> Directory<S> {
         child
     }
 
-    fn load_requirement(&self, hrid: String) -> Option<Result<Requirement, LoadError>> {
+    fn load_requirement(&self, hrid: Hrid) -> Option<Result<Requirement, LoadError>> {
         match Requirement::load(&self.root, hrid) {
             Ok(requirement) => Some(Ok(requirement)),
             Err(LoadError::NotFound) => None,
@@ -80,11 +80,19 @@ impl Directory<Unloaded> {
 
         let requirements: Vec<Requirement> = paths
             .par_iter()
-            .map(|path| {
-                let hrid = path.file_stem().unwrap().to_string_lossy().to_string();
+            .filter_map(|path| {
+                let Some(hrid_str) = path.file_stem().map(|p| p.to_string_lossy().to_string())
+                else {
+                    tracing::debug!("Skipping file without a valid stem: {}", path.display());
+                    return None;
+                };
+                let Ok(hrid) = Hrid::from_str(&hrid_str) else {
+                    tracing::debug!("Skipping filename that isn't a valid HRID: {hrid_str}");
+                    return None;
+                };
                 let directory = path.parent().unwrap().to_path_buf();
-                Requirement::load(&directory, hrid).unwrap() // TODO: handle
-                                                             // error properly
+                Some(Requirement::load(&directory, hrid).unwrap()) // TODO: handle
+                                                                   // error properly
             })
             .collect();
 
@@ -162,8 +170,8 @@ mod tests {
 
         assert_eq!(r1.hrid().to_string(), "REQ-001");
 
-        let loaded = Requirement::load(&dir.root, r1.hrid().to_string())
-            .expect("should load saved requirement");
+        let loaded =
+            Requirement::load(&dir.root, r1.hrid().clone()).expect("should load saved requirement");
         assert_eq!(loaded.uuid(), r1.uuid());
     }
 
@@ -184,10 +192,10 @@ mod tests {
         let child = dir.add_requirement("USR".to_string());
 
         Directory::new(dir.root.clone())
-            .link_requirement(child.hrid().to_string(), parent.hrid().to_string());
+            .link_requirement(child.hrid().clone(), parent.hrid().clone());
 
         let updated =
-            Requirement::load(&dir.root, child.hrid().to_string()).expect("should load child");
+            Requirement::load(&dir.root, child.hrid().clone()).expect("should load child");
 
         let parents: Vec<_> = updated.parents().collect();
         assert_eq!(parents.len(), 1);
@@ -214,7 +222,7 @@ mod tests {
         let mut loaded_dir = Directory::new(dir.root.clone()).load_all();
         loaded_dir.update_hrids();
 
-        let updated = Requirement::load(&loaded_dir.root, child.hrid().to_string())
+        let updated = Requirement::load(&loaded_dir.root, child.hrid().clone())
             .expect("should load updated child");
         let (_, parent_ref) = updated.parents().next().unwrap();
 
@@ -231,8 +239,7 @@ mod tests {
 
         let mut found = 0;
         for i in 1..=2 {
-            let hrid = format!("X-00{i}");
-            dbg!(&hrid);
+            let hrid = Hrid::from_str(&format!("X-00{i}")).unwrap();
             let req = Requirement::load(&loaded.root, hrid).unwrap();
             if req.uuid() == r1.uuid() || req.uuid() == r2.uuid() {
                 found += 1;
