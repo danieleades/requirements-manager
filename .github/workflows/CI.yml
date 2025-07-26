@@ -97,7 +97,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - name: Build Sphinx example
-        run: uv run make SPHINXOPTS="-W -k" html
+        run: uv run make SPHINXOPTS="-W --keep-going -n" html
         working-directory: examples/sphinx
           
 
