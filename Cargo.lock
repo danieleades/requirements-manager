@@ -146,9 +146,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.29"
+version = "1.2.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c1599538de2394445747c8cf7935946e3cc27e9625f889d979bfb2aaf569362"
+checksum = "deec109607ca693028562ed836a5f1c4b8bd77755c4e132fc5ce11b0b6211ae7"
 dependencies = [
  "shlex",
 ]
@@ -549,12 +549,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
 
 [[package]]
-name = "non-empty"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58f0cc726c4ccda5adfdbdeb8999304742ed2edbad132d87fd7f2720555bdb2e"
-
-[[package]]
 name = "non-empty-string"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -752,7 +746,6 @@ dependencies = [
  "chrono",
  "clap",
  "criterion",
- "non-empty",
  "non-empty-string",
  "nonempty",
  "rayon",
