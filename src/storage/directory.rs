@@ -16,7 +16,7 @@ use nonempty::NonEmpty;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use walkdir::WalkDir;
 
-pub use crate::storage::Tree;
+pub use crate::domain::Tree;
 use crate::{
     domain::{
         requirement::{LoadError, Parent},

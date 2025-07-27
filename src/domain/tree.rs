@@ -121,8 +121,8 @@ impl Tree {
 #[cfg(test)]
 mod tests {
     use uuid::Uuid;
-
-    use crate::{domain::Hrid, storage::Tree, Requirement};
+    use super::Tree;
+    use crate::{domain::Hrid, Requirement};
 
     fn make_requirement(uuid: Uuid, hrid: Hrid, parents: Vec<(Uuid, Hrid)>) -> Requirement {
         let mut req = Requirement::new_with_uuid(hrid, String::new(), uuid);
