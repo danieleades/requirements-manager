@@ -5,4 +5,4 @@ mod config;
 pub use config::Config;
 
 mod hrid;
-pub use hrid::Hrid;
+pub use hrid::{EmptyStringError, Hrid};

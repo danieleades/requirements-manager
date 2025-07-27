@@ -20,6 +20,14 @@ pub struct Config {
     /// This is the second component of the HRID.
     /// For example, '001' (3 digits) or '0001' (4 digits).
     digits: usize,
+
+    /// Whether to allow the requirements directory to contain markdown files
+    /// with names that are not valid HRIDs
+    pub allow_unrecognised: bool,
+
+    /// Whether to allow markdown files with names that are valid HRIDs that are
+    /// not correctly formatted
+    pub allow_invalid: bool,
 }
 
 impl Default for Config {
@@ -27,6 +35,8 @@ impl Default for Config {
         Self {
             allowed_kinds: Vec::new(),
             digits: default_digits(),
+            allow_unrecognised: false,
+            allow_invalid: false,
         }
     }
 }
@@ -63,6 +73,12 @@ enum Versions {
         /// For example, '001' (3 digits) or '0001' (4 digits).
         #[serde(default = "default_digits")]
         digits: usize,
+
+        #[serde(default)]
+        allow_unrecognised: bool,
+
+        #[serde(default)]
+        allow_invalid: bool,
     },
 }
 
@@ -72,9 +88,13 @@ impl From<Versions> for super::Config {
             Versions::V1 {
                 allowed_kinds,
                 digits,
+                allow_unrecognised,
+                allow_invalid,
             } => Self {
                 allowed_kinds,
                 digits,
+                allow_unrecognised,
+                allow_invalid,
             },
         }
     }
@@ -85,6 +105,8 @@ impl From<super::Config> for Versions {
         Self::V1 {
             allowed_kinds: config.allowed_kinds,
             digits: config.digits,
+            allow_unrecognised: config.allow_unrecognised,
+            allow_invalid: config.allow_invalid,
         }
     }
 }
