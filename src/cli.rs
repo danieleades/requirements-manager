@@ -20,10 +20,10 @@ pub struct Cli {
 }
 
 impl Cli {
-    pub fn run(self) {
+    pub fn run(self) -> anyhow::Result<()> {
         Self::setup_logging(self.verbose);
 
-        self.command.run(self.root);
+        self.command.run(self.root)
     }
 
     fn setup_logging(verbosity: u8) {
@@ -66,12 +66,13 @@ pub enum Command {
 }
 
 impl Command {
-    fn run(self, root: PathBuf) {
+    fn run(self, root: PathBuf) -> anyhow::Result<()> {
         match self {
-            Self::Add(command) => command.run(root),
-            Self::Link(command) => command.run(root),
-            Self::Clean => Clean::run(root),
+            Self::Add(command) => command.run(root)?,
+            Self::Link(command) => command.run(root)?,
+            Self::Clean => Clean::run(root)?,
         }
+        Ok(())
     }
 }
 
@@ -89,17 +90,18 @@ pub struct Add {
 
 impl Add {
     #[instrument]
-    fn run(self, root: PathBuf) {
-        let mut directory = Directory::new(root).load_all();
-        let requirement = directory.add_requirement(self.kind);
+    fn run(self, root: PathBuf) -> anyhow::Result<()> {
+        let mut directory = Directory::new(root).load_all()?;
+        let requirement = directory.add_requirement(self.kind)?;
 
         for parent in self.parent {
             // TODO: the linkage should be done before the requirement is saved by the
             // 'add_requirement' method to avoid unnecessary IO.
-            directory.link_requirement(requirement.hrid().clone(), parent);
+            directory.link_requirement(requirement.hrid().clone(), parent)?;
         }
 
         println!("Added requirement {}", requirement.hrid());
+        Ok(())
     }
 }
 
@@ -114,13 +116,15 @@ pub struct Link {
 
 impl Link {
     #[instrument]
-    fn run(self, root: PathBuf) {
+    fn run(self, root: PathBuf) -> anyhow::Result<()> {
         let directory = Directory::new(root);
         let msg = format!("Linked {} to {}", self.child, self.parent);
 
-        directory.link_requirement(self.child, self.parent);
+        directory.link_requirement(self.child, self.parent)?;
 
         println!("{msg}");
+
+        Ok(())
     }
 }
 
@@ -129,7 +133,8 @@ pub struct Clean {}
 
 impl Clean {
     #[instrument]
-    fn run(path: PathBuf) {
-        Directory::new(path).load_all().update_hrids();
+    fn run(path: PathBuf) -> anyhow::Result<()> {
+        Directory::new(path).load_all()?.update_hrids()?;
+        Ok(())
     }
 }

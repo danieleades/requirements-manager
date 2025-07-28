@@ -19,6 +19,7 @@ pub struct Hrid {
     id: usize,
 }
 
+/// Error returned when the provided string is empty
 #[derive(Debug, thiserror::Error)]
 #[error("found empty string")]
 pub struct EmptyStringError;
@@ -174,7 +175,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_hrid_creation_no_namespace() {
+    fn hrid_creation_no_namespace() {
         let hrid = Hrid::new("URS".to_string(), 42).unwrap();
         assert!(hrid.namespace().is_empty());
         assert_eq!(hrid.kind(), "URS");
@@ -182,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hrid_creation_with_namespace() {
+    fn hrid_creation_with_namespace() {
         let hrid = Hrid::new_with_namespace(
             vec!["COMPONENT".to_string(), "SUBCOMPONENT".to_string()],
             "SYS".to_string(),
@@ -196,13 +197,13 @@ mod tests {
     }
 
     #[test]
-    fn test_hrid_creation_empty_kind_fails() {
+    fn hrid_creation_empty_kind_fails() {
         let result = Hrid::new(String::new(), 42);
         assert!(matches!(result, Err(EmptyStringError)));
     }
 
     #[test]
-    fn test_hrid_creation_empty_namespace_segment_fails() {
+    fn hrid_creation_empty_namespace_segment_fails() {
         let result = Hrid::new_with_namespace(
             vec!["COMPONENT".to_string(), String::new()],
             "SYS".to_string(),
@@ -212,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hrid_display_no_namespace() {
+    fn hrid_display_no_namespace() {
         let hrid = Hrid::new("SYS".to_string(), 1).unwrap();
         assert_eq!(format!("{hrid}"), "SYS-001");
 
@@ -224,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hrid_display_with_namespace() {
+    fn hrid_display_with_namespace() {
         let hrid =
             Hrid::new_with_namespace(vec!["COMPONENT".to_string()], "SYS".to_string(), 5).unwrap();
         assert_eq!(format!("{hrid}"), "COMPONENT-SYS-005");
@@ -247,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hrid_display_large_numbers() {
+    fn hrid_display_large_numbers() {
         let hrid = Hrid::new("BIG".to_string(), 1000).unwrap();
         assert_eq!(format!("{hrid}"), "BIG-1000");
 
@@ -257,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_from_valid_no_namespace() {
+    fn try_from_valid_no_namespace() {
         let hrid = Hrid::try_from("URS-001").unwrap();
         assert!(hrid.namespace().is_empty());
         assert_eq!(hrid.kind(), "URS");
@@ -275,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_from_valid_with_namespace() {
+    fn try_from_valid_with_namespace() {
         let hrid = Hrid::try_from("COMPONENT-SYS-005").unwrap();
         assert_eq!(hrid.namespace(), vec!["COMPONENT"]);
         assert_eq!(hrid.kind(), "SYS");
@@ -293,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_from_valid_no_leading_zeros() {
+    fn try_from_valid_no_leading_zeros() {
         let hrid = Hrid::try_from("URS-1").unwrap();
         assert!(hrid.namespace().is_empty());
         assert_eq!(hrid.kind(), "URS");
@@ -306,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_from_valid_large_numbers() {
+    fn try_from_valid_large_numbers() {
         let hrid = Hrid::try_from("BIG-1000").unwrap();
         assert!(hrid.namespace().is_empty());
         assert_eq!(hrid.kind(), "BIG");
@@ -319,31 +320,31 @@ mod tests {
     }
 
     #[test]
-    fn test_try_from_invalid_no_dash() {
+    fn try_from_invalid_no_dash() {
         let result = Hrid::try_from("URS001");
         assert_eq!(result, Err(Error::Syntax("URS001".to_string())));
     }
 
     #[test]
-    fn test_try_from_invalid_empty_string() {
+    fn try_from_invalid_empty_string() {
         let result = Hrid::try_from("");
         assert_eq!(result, Err(Error::Syntax(String::new())));
     }
 
     #[test]
-    fn test_try_from_invalid_only_dash() {
+    fn try_from_invalid_only_dash() {
         let result = Hrid::try_from("-");
         assert_eq!(result, Err(Error::Syntax("-".to_string())));
     }
 
     #[test]
-    fn test_try_from_invalid_single_part() {
+    fn try_from_invalid_single_part() {
         let result = Hrid::try_from("JUSTONEWORD");
         assert_eq!(result, Err(Error::Syntax("JUSTONEWORD".to_string())));
     }
 
     #[test]
-    fn test_try_from_invalid_non_numeric_id() {
+    fn try_from_invalid_non_numeric_id() {
         let result = Hrid::try_from("URS-abc");
         assert_eq!(
             result,
@@ -358,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_from_invalid_mixed_id() {
+    fn try_from_invalid_mixed_id() {
         let result = Hrid::try_from("SYS-12abc");
         assert_eq!(
             result,
@@ -367,13 +368,13 @@ mod tests {
     }
 
     #[test]
-    fn test_try_from_invalid_negative_id() {
+    fn try_from_invalid_negative_id() {
         let result = Hrid::try_from("URS--1");
         assert_eq!(result, Err(Error::Syntax("URS--1".to_string())));
     }
 
     #[test]
-    fn test_try_from_empty_namespace_segment_fails() {
+    fn try_from_empty_namespace_segment_fails() {
         let result = Hrid::try_from("-NS-SYS-001");
         assert!(result == Err(Error::Syntax("-NS-SYS-001".to_string())));
 
@@ -382,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn test_try_from_empty_kind_fails() {
+    fn try_from_empty_kind_fails() {
         // This would actually be caught by consecutive dashes check now
         // but let's test a case where kind is empty due to structure
         let result = Hrid::try_from("-001");
@@ -390,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hrid_clone_and_eq() {
+    fn hrid_clone_and_eq() {
         let hrid1 =
             Hrid::new_with_namespace(vec!["NS".to_string()], "URS".to_string(), 42).unwrap();
         let hrid2 = hrid1.clone();
@@ -402,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hrid_not_eq() {
+    fn hrid_not_eq() {
         let hrid1 = Hrid::new("URS".to_string(), 42).unwrap();
         let hrid2 = Hrid::new("SYS".to_string(), 42).unwrap();
         let hrid3 = Hrid::new("URS".to_string(), 43).unwrap();
@@ -415,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn test_roundtrip_conversion_no_namespace() {
+    fn roundtrip_conversion_no_namespace() {
         let original = Hrid::new("TEST".to_string(), 123).unwrap();
 
         let as_string = format!("{original}");
@@ -425,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn test_roundtrip_conversion_with_namespace() {
+    fn roundtrip_conversion_with_namespace() {
         let original = Hrid::new_with_namespace(
             vec!["COMPONENT".to_string(), "SUBCOMPONENT".to_string()],
             "SYS".to_string(),
@@ -440,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn test_error_display() {
+    fn error_display() {
         let syntax_error = Error::Syntax("bad-format".to_string());
         assert_eq!(format!("{syntax_error}"), "Invalid HRID format: bad-format");
 

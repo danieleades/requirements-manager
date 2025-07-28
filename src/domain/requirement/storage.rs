@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn test_markdown_round_trip() {
+    fn markdown_round_trip() {
         let hrid = "REQ-001".parse().unwrap();
         let expected = r"---
 _version: '1'
@@ -332,7 +332,7 @@ This is a paragraph.
     }
 
     #[test]
-    fn test_markdown_minimal_content() {
+    fn markdown_minimal_content() {
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 _version: '1'
@@ -352,7 +352,7 @@ Just content
     }
 
     #[test]
-    fn test_empty_content() {
+    fn empty_content() {
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 _version: '1'
@@ -368,7 +368,7 @@ created: 2025-07-14T07:15:00Z
     }
 
     #[test]
-    fn test_multiline_content() {
+    fn multiline_content() {
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 _version: '1'
@@ -388,7 +388,7 @@ Line 4
     }
 
     #[test]
-    fn test_invalid_frontmatter_start() {
+    fn invalid_frontmatter_start() {
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = "invalid frontmatter";
 
@@ -399,7 +399,7 @@ Line 4
     }
 
     #[test]
-    fn test_missing_frontmatter_end() {
+    fn missing_frontmatter_end() {
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 uuid: 12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53
@@ -413,7 +413,7 @@ This should be content but there's no closing ---";
     }
 
     #[test]
-    fn test_invalid_yaml() {
+    fn invalid_yaml() {
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 invalid: yaml: structure:
@@ -428,7 +428,7 @@ Content";
     }
 
     #[test]
-    fn test_empty_input() {
+    fn empty_input() {
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = "";
 
@@ -439,7 +439,7 @@ Content";
     }
 
     #[test]
-    fn test_write_success() {
+    fn write_success() {
         let frontmatter = create_test_frontmatter();
         let requirement = MarkdownRequirement {
             frontmatter,
@@ -457,7 +457,7 @@ Content";
     }
 
     #[test]
-    fn test_save_and_load() {
+    fn save_and_load() {
         let temp_dir = TempDir::new().unwrap();
         let frontmatter = create_test_frontmatter();
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
@@ -481,7 +481,7 @@ Content";
     }
 
     #[test]
-    fn test_load_nonexistent_file() {
+    fn load_nonexistent_file() {
         let temp_dir = TempDir::new().unwrap();
         let result =
             MarkdownRequirement::load(temp_dir.path(), Hrid::new("REQ".to_string(), 1).unwrap());
@@ -489,7 +489,7 @@ Content";
     }
 
     #[test]
-    fn test_frontmatter_version_conversion() {
+    fn frontmatter_version_conversion() {
         let uuid = Uuid::parse_str("12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53").unwrap();
         let created = Utc.with_ymd_and_hms(2025, 7, 14, 7, 15, 0).unwrap();
         let tags = BTreeSet::from(["tag1".to_owned()]);
@@ -512,7 +512,7 @@ Content";
     }
 
     #[test]
-    fn test_parent_creation() {
+    fn parent_creation() {
         let uuid = Uuid::parse_str("12b3f5c5-b1a8-4aa8-a882-20ff1c2aab53").unwrap();
         let fingerprint = "test-fingerprint".to_string();
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
@@ -529,7 +529,7 @@ Content";
     }
 
     #[test]
-    fn test_content_with_triple_dashes() {
+    fn content_with_triple_dashes() {
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r"---
 _version: '1'
@@ -550,7 +550,7 @@ And more --- here
     }
 
     #[test]
-    fn test_frontmatter_with_special_characters() {
+    fn frontmatter_with_special_characters() {
         let hrid = Hrid::new("REQ".to_string(), 1).unwrap();
         let content = r#"---
 _version: '1'

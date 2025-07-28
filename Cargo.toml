@@ -18,10 +18,12 @@ name = "req"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1.0.98"
 borsh = { version = "1.5.7", features = ["derive"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 clap = { version = "4.5.41", features = ["derive"] }
 non-empty-string = "0.2.6"
+nonempty = "0.12.0"
 rayon = "1.10.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_yaml = "0.9.34"
@@ -49,6 +51,6 @@ harness = false
 missing_docs = "warn"
 
 [lints.clippy]
-pedantic = "warn"
-nursery = "warn"
+pedantic = "deny"
+nursery = "deny"
 cargo = "deny"

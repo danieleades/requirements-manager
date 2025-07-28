@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_and_lookup() {
+    fn insert_and_lookup() {
         let mut tree = Tree::default();
         let uuid = Uuid::new_v4();
         let hrid = Hrid::try_from("R-001").unwrap();
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_hrids_corrects_parent_hrids() {
+    fn update_hrids_corrects_parent_hrids() {
         let mut tree = Tree::default();
         let parent_uuid = Uuid::new_v4();
         let child_uuid = Uuid::new_v4();
@@ -187,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_hrids_no_change() {
+    fn update_hrids_no_change() {
         let mut tree = Tree::default();
         let parent_uuid = Uuid::new_v4();
         let child_uuid = Uuid::new_v4();
