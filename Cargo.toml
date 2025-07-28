@@ -1,6 +1,6 @@
 [package]
 name = "requirements-manager"
-version = "0.1.0"
+version = "0.1.1"
 description = "Plain-text requirements management tool"
 repository = "https://github.com/danieleades/requirements-manager"
 keywords = ["requirements", "plain-text", "cli"]
