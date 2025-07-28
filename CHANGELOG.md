@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/danieleades/requirements-manager/compare/v0.1.0...v0.1.1) - 2025-07-28
+
+### Added
+
+- improve error handling ([#25](https://github.com/danieleades/requirements-manager/pull/25))
+- support namespaces in HRIDs ([#21](https://github.com/danieleades/requirements-manager/pull/21))
+
+### Other
+
+- *(deps)* bump criterion from 0.6.0 to 0.7.0 ([#22](https://github.com/danieleades/requirements-manager/pull/22))
+- add sphinx and mdbook examples ([#23](https://github.com/danieleades/requirements-manager/pull/23))
+- extend and improve benchmarks ([#20](https://github.com/danieleades/requirements-manager/pull/20))
+- release v0.1.0 ([#11](https://github.com/danieleades/requirements-manager/pull/11))
+
 ## [0.1.0](https://github.com/danieleades/requirements-manager/releases/tag/v0.1.0) - 2025-07-23
 
 ### Added
