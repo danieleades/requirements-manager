@@ -9,7 +9,7 @@ use requiem::Directory;
 use tempfile::TempDir;
 
 fn preseed_directory(path: &std::path::Path, n: usize) {
-    let mut dir = Directory::new(path.to_path_buf()).load_all().unwrap();
+    let mut dir = Directory::load(path.to_path_buf()).unwrap();
 
     for _ in 0..n {
         dir.add_requirement("R".to_string()).unwrap();
@@ -26,7 +26,7 @@ fn load_all(c: &mut Criterion) {
                 tmp_dir
             },
             |tmp_dir| {
-                let _loaded = Directory::new(tmp_dir.path().to_path_buf()).load_all();
+                let _loaded = Directory::load(tmp_dir.path().to_path_buf()).unwrap();
             },
             BatchSize::SmallInput,
         );
@@ -46,8 +46,7 @@ fn add_single_requirement_to_populated_dir(c: &mut Criterion) {
                 // Note this routine deliberately includes the step to load the requirements
                 // from disk, since this represents the true end-to-end user
                 // workflow.
-                Directory::new(tmp_dir.path().to_path_buf())
-                    .load_all()
+                Directory::load(tmp_dir.path().to_path_buf())
                     .unwrap()
                     .add_requirement(black_box("R".to_string()))
                     .unwrap();

@@ -11,7 +11,6 @@ use uuid::Uuid;
 
 use super::Requirement;
 use crate::domain::{
-    hrid,
     requirement::{Content, Metadata},
     Hrid,
 };
@@ -72,30 +71,34 @@ impl MarkdownRequirement {
 
     /// Writes the requirement to the given file path.
     /// Creates the file if it doesn't exist, or overwrites it if it does.
-    ///
-    /// Note the path here is the path to the directory. The filename is
-    /// determined by the HRID
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        let file = File::create(path.join(self.hrid.to_string()).with_extension("md"))?;
+        let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
         self.write(&mut writer)
     }
 
     /// Reads a requirement from the given file path.
-    ///
-    ///
-    /// Note the path here is the path to the directory. The filename is
-    /// determined by the HRID
     pub fn load(path: &Path, hrid: Hrid) -> Result<Self, LoadError> {
-        let file =
-            File::open(path.join(hrid.to_string()).with_extension("md")).map_err(|io_error| {
-                match io_error.kind() {
-                    io::ErrorKind::NotFound => LoadError::NotFound,
-                    _ => LoadError::Io(io_error),
-                }
-            })?;
+        let file = File::open(path).map_err(|io_error| match io_error.kind() {
+            io::ErrorKind::NotFound => LoadError::NotFound,
+            _ => LoadError::Io(io_error),
+        })?;
         let mut reader = BufReader::new(file);
         Self::read(&mut reader, hrid)
+    }
+
+    #[cfg(test)]
+    const fn tags(&self) -> &BTreeSet<String> {
+        match &self.frontmatter {
+            FrontMatter::V1 { tags, .. } => tags,
+        }
+    }
+
+    #[cfg(test)]
+    const fn parents(&self) -> &Vec<Parent> {
+        match &self.frontmatter {
+            FrontMatter::V1 { parents, .. } => parents,
+        }
     }
 }
 
@@ -105,17 +108,6 @@ pub enum LoadError {
     NotFound,
     Io(#[from] io::Error),
     Yaml(#[from] serde_yaml::Error),
-    Hrid(#[from] hrid::Error),
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(from = "FrontMatterVersion")]
-#[serde(into = "FrontMatterVersion")]
-struct FrontMatter {
-    uuid: Uuid,
-    created: DateTime<Utc>,
-    tags: BTreeSet<String>,
-    parents: Vec<Parent>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -144,9 +136,9 @@ where
     Hrid::try_from(s.as_str()).map_err(serde::de::Error::custom)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(tag = "_version")]
-enum FrontMatterVersion {
+enum FrontMatter {
     #[serde(rename = "1")]
     V1 {
         uuid: Uuid,
@@ -156,41 +148,6 @@ enum FrontMatterVersion {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         parents: Vec<Parent>,
     },
-}
-
-impl From<FrontMatterVersion> for FrontMatter {
-    fn from(version: FrontMatterVersion) -> Self {
-        match version {
-            FrontMatterVersion::V1 {
-                uuid,
-                created,
-                tags,
-                parents,
-            } => Self {
-                uuid,
-                created,
-                tags,
-                parents,
-            },
-        }
-    }
-}
-
-impl From<FrontMatter> for FrontMatterVersion {
-    fn from(front_matter: FrontMatter) -> Self {
-        let FrontMatter {
-            uuid,
-            created,
-            tags,
-            parents,
-        } = front_matter;
-        Self::V1 {
-            uuid,
-            created,
-            tags,
-            parents,
-        }
-    }
 }
 
 impl From<Requirement> for MarkdownRequirement {
@@ -206,7 +163,7 @@ impl From<Requirement> for MarkdownRequirement {
                 },
         } = req;
 
-        let frontmatter = FrontMatter {
+        let frontmatter = FrontMatter::V1 {
             uuid,
             created,
             tags,
@@ -228,14 +185,12 @@ impl From<Requirement> for MarkdownRequirement {
     }
 }
 
-impl TryFrom<MarkdownRequirement> for Requirement {
-    type Error = hrid::Error;
-
-    fn try_from(req: MarkdownRequirement) -> Result<Self, Self::Error> {
+impl From<MarkdownRequirement> for Requirement {
+    fn from(req: MarkdownRequirement) -> Self {
         let MarkdownRequirement {
             hrid,
             frontmatter:
-                FrontMatter {
+                FrontMatter::V1 {
                     uuid,
                     created,
                     tags,
@@ -252,17 +207,17 @@ impl TryFrom<MarkdownRequirement> for Requirement {
                     fingerprint,
                     hrid: parent_hrid,
                 } = parent;
-                Ok((
+                (
                     uuid,
                     super::Parent {
                         hrid: parent_hrid,
                         fingerprint,
                     },
-                ))
+                )
             })
-            .collect::<Result<_, Self::Error>>()?;
+            .collect();
 
-        Ok(Self {
+        Self {
             content: Content { content, tags },
             metadata: Metadata {
                 uuid,
@@ -270,7 +225,7 @@ impl TryFrom<MarkdownRequirement> for Requirement {
                 created,
                 parents: parent_map,
             },
-        })
+        }
     }
 }
 
@@ -292,7 +247,7 @@ mod tests {
             fingerprint: "fingerprint1".to_string(),
             hrid: "REQ-PARENT-001".parse().unwrap(),
         }];
-        FrontMatter {
+        FrontMatter::V1 {
             uuid,
             created,
             tags,
@@ -347,8 +302,8 @@ Just content
 
         assert_eq!(requirement.hrid, hrid);
         assert_eq!(requirement.content, "Just content");
-        assert!(requirement.frontmatter.tags.is_empty());
-        assert!(requirement.frontmatter.parents.is_empty());
+        assert!(requirement.tags().is_empty());
+        assert!(requirement.parents().is_empty());
     }
 
     #[test]
@@ -469,12 +424,15 @@ Content";
             content: content.clone(),
         };
 
+        // Create the file path (directory + filename)
+        let file_path = temp_dir.path().join("REQ-001.md");
+
         // Test save
-        let save_result = requirement.save(temp_dir.path());
+        let save_result = requirement.save(&file_path);
         assert!(save_result.is_ok());
 
         // Test load
-        let loaded_requirement = MarkdownRequirement::load(temp_dir.path(), hrid.clone()).unwrap();
+        let loaded_requirement = MarkdownRequirement::load(&file_path, hrid.clone()).unwrap();
         assert_eq!(loaded_requirement.hrid, hrid);
         assert_eq!(loaded_requirement.content, content);
         assert_eq!(loaded_requirement.frontmatter, frontmatter);
@@ -483,8 +441,10 @@ Content";
     #[test]
     fn load_nonexistent_file() {
         let temp_dir = TempDir::new().unwrap();
-        let result =
-            MarkdownRequirement::load(temp_dir.path(), Hrid::new("REQ".to_string(), 1).unwrap());
+        let result = MarkdownRequirement::load(
+            &temp_dir.path().join("missing.md"),
+            Hrid::new("REQ".to_string(), 1).unwrap(),
+        );
         assert!(matches!(result, Err(LoadError::NotFound)));
     }
 
@@ -499,14 +459,14 @@ Content";
             hrid: Hrid::new("REQ".to_string(), 1).unwrap(),
         }];
 
-        let frontmatter = FrontMatter {
+        let frontmatter = FrontMatter::V1 {
             uuid,
             created,
             tags,
             parents,
         };
-        let version: FrontMatterVersion = frontmatter.clone().into();
-        let back_to_frontmatter: FrontMatter = version.into();
+        let version: FrontMatter = frontmatter.clone();
+        let back_to_frontmatter: FrontMatter = version;
 
         assert_eq!(frontmatter, back_to_frontmatter);
     }
@@ -567,11 +527,8 @@ Content here
         let mut reader = Cursor::new(content);
         let requirement = MarkdownRequirement::read(&mut reader, hrid).unwrap();
 
-        assert!(requirement.frontmatter.tags.contains("tag with spaces"));
-        assert!(requirement.frontmatter.tags.contains("tag-with-dashes"));
-        assert!(requirement
-            .frontmatter
-            .tags
-            .contains("tag_with_underscores"));
+        assert!(requirement.tags().contains("tag with spaces"));
+        assert!(requirement.tags().contains("tag-with-dashes"));
+        assert!(requirement.tags().contains("tag_with_underscores"));
     }
 }

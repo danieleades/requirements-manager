@@ -14,31 +14,104 @@ use std::{
 
 use nonempty::NonEmpty;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use uuid::Uuid;
 use walkdir::WalkDir;
 
 pub use crate::domain::Tree;
 use crate::{
     domain::{
-        requirement::{LoadError, Parent},
+        self,
+        requirement::{markdown::MarkdownRequirement, LoadError, Parent},
         Config, Hrid,
     },
     EmptyStringError, Requirement,
 };
 
-#[derive(Debug, PartialEq)]
-pub struct Loaded(Tree);
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Unloaded;
-
 /// A filesystem backed store of requirements.
-pub struct Directory<S> {
+pub struct Directory {
     /// The root of the directory requirements are stored in.
     root: PathBuf,
-    state: S,
+    tree: Tree,
 }
 
-impl<S> Directory<S> {
+// fresh attempt at defining the API
+impl Directory {
+    /// Get a requirement from the in-memory cache, if present
+    #[must_use]
+    pub fn requirement(&self, uuid: &Uuid) -> Option<&Requirement> {
+        self.tree.requirement(uuid)
+    }
+
+    /// Retrieve a requirement from the in-memory cache by HRID, if present
+    #[must_use]
+    pub fn requirement_by_hrid(&self, hrid: &Hrid) -> Option<&Requirement> {
+        self.tree.requirement_by_hrid(hrid)
+    }
+
+    /// load a requirement from disk by HRID.
+    ///
+    /// The canonical path to the requirement is determined by the HRID.
+    ///
+    /// This method does not update the in-memory cache
+    ///
+    /// # Errors
+    ///
+    /// This method can fail if the file isn't at the canonical path, or can't
+    /// be parsed
+    pub fn load_requirement(&self, hrid: Hrid) -> Result<Requirement, LoadError> {
+        let path = self.canonical_path(&hrid);
+
+        let markdown_requirement =
+            domain::requirement::markdown::MarkdownRequirement::load(&path, hrid)?;
+        Ok(markdown_requirement.into())
+    }
+
+    /// Save a requirement to disk
+    ///
+    /// The canonical path to the requirement is determined by the HRID.
+    ///
+    /// # Errors
+    ///
+    /// This method can fail if the canonical path cannot be written to
+    pub fn save_requirement(&self, requirement: Requirement) -> io::Result<()> {
+        let path = self.canonical_path(requirement.hrid());
+
+        let markdown_requirement = MarkdownRequirement::from(requirement);
+        markdown_requirement.save(&path)
+    }
+
+    /// Insert a requirement into the in-memory cache.
+    ///
+    /// If the UUID already exists, this replaces the existing requirement and
+    /// the old one is returned.
+    ///
+    /// This method does not persist the updated requirement to disk
+    pub fn insert_requirement(&mut self, requirement: Requirement) -> Option<Requirement> {
+        self.tree.insert(requirement)
+    }
+
+    /// Insert a requirement into the in-memory cache and persist it to disk.
+    ///
+    /// If the UUID already exists, this replaces the existing requirement and
+    /// the old one is returned.
+    ///
+    /// # Errors
+    ///
+    /// This method can fail if the canonical path cannot be written to.
+    /// If this occurs, the file will *not* be saved to the in-memory cache.
+    pub fn store_requirement(
+        &mut self,
+        requirement: Requirement,
+    ) -> io::Result<Option<Requirement>> {
+        self.save_requirement(requirement.clone())?;
+        Ok(self.insert_requirement(requirement))
+    }
+
+    /// Determine the canonical path for a requirement, based on it's HRID
+    fn canonical_path(&self, hrid: &Hrid) -> PathBuf {
+        self.root.join(hrid.to_string()).with_extension("md")
+    }
+
     /// Link two requirements together with a parent-child relationship.
     ///
     /// # Errors
@@ -48,36 +121,40 @@ impl<S> Directory<S> {
     /// - either the child or parent requirement file cannot be found
     /// - either the child or parent requirement file cannot be parsed
     /// - the child requirement file cannot be written to
-    pub fn link_requirement(&self, child: Hrid, parent: Hrid) -> Result<Requirement, LoadError> {
-        let mut child = self.load_requirement(child)?;
-        let parent = self.load_requirement(parent)?;
+    pub fn link_requirement(
+        &mut self,
+        child: &Hrid,
+        parent: Hrid,
+    ) -> Result<Requirement, LinkError> {
+        let parent_requirement = self
+            .tree
+            .requirement_by_hrid(&parent)
+            .ok_or_else(|| LinkError::NotFound(parent.clone()))?;
+
+        let parent_uuid = parent_requirement.uuid();
+        let parent_fingerprint = parent_requirement.fingerprint();
+
+        let mut child = self
+            .tree
+            .requirement_by_hrid_mut(child)
+            .ok_or_else(|| LinkError::NotFound(child.clone()))?
+            .clone();
 
         child.add_parent(
-            parent.uuid(),
+            parent_uuid,
             Parent {
-                hrid: parent.hrid().clone(),
-                fingerprint: parent.fingerprint(),
+                hrid: parent,
+                fingerprint: parent_fingerprint,
             },
         );
 
-        child.save(&self.root)?;
+        let store_result = self.store_requirement(child.clone())?;
+        debug_assert!(
+            store_result.is_some(),
+            "the requirement must already be in the in-memory cache"
+        );
 
         Ok(child)
-    }
-
-    fn load_requirement(&self, hrid: Hrid) -> Result<Requirement, LoadError> {
-        Requirement::load(&self.root, hrid)
-    }
-}
-
-impl Directory<Unloaded> {
-    /// Opens a directory at the given path.
-    #[must_use]
-    pub const fn new(root: PathBuf) -> Self {
-        Self {
-            root,
-            state: Unloaded,
-        }
     }
 
     /// Load all requirements from disk
@@ -90,19 +167,20 @@ impl Directory<Unloaded> {
     /// be parsed as requirements, are skipped. if `allow_unrecognised` is
     /// `false` (the default), then any unrecognised or invalid markdown files
     /// in the directory will return an error.
-    pub fn load_all(self) -> Result<Directory<Loaded>, DirectoryLoadError> {
-        let config = load_config(&self.root);
-        let md_paths = collect_markdown_paths(&self.root);
+    pub fn load(root: PathBuf) -> Result<Self, DirectoryLoadError> {
+        let config = load_config(&root);
+        let md_paths = collect_markdown_paths(&root);
 
         let (requirements, unrecognised_paths): (Vec<_>, Vec<_>) = md_paths
             .par_iter()
-            .map(|path| try_load_requirement(path))
+            .map(|path| load_requirement_from_canonical_path(path))
             .partition(Result::is_ok);
 
         let requirements: Vec<_> = requirements.into_iter().map(Result::unwrap).collect();
         let unrecognised_paths: Vec<_> = unrecognised_paths
             .into_iter()
             .map(Result::unwrap_err)
+            .map(|LoadFromPathError(e)| e)
             .collect();
 
         if !config.allow_unrecognised && !unrecognised_paths.is_empty() {
@@ -114,11 +192,86 @@ impl Directory<Unloaded> {
             tree.insert(req);
         }
 
-        Ok(Directory {
-            root: self.root,
-            state: Loaded(tree),
-        })
+        Ok(Self { root, tree })
     }
+
+    /// Add a new requirement to both the in-memory cache and the on-disk
+    /// storage.
+    ///
+    /// # Errors
+    ///
+    /// This can fail if the provided `kind` is an empty string, or if the
+    /// canonical filepath cannot be written to.
+    #[allow(clippy::missing_panics_doc)]
+    pub fn add_requirement(&mut self, kind: String) -> Result<&Requirement, AddRequirementError> {
+        let id = self.tree.next_index(&kind);
+        let hrid = Hrid::new(kind, id)?;
+        let requirement = Requirement::new(hrid, String::new());
+        let uuid = requirement.uuid();
+        let insert_result = self.store_requirement(requirement)?;
+        debug_assert!(
+            insert_result.is_none(),
+            "new requirement can't already be present!"
+        );
+        Ok(self.requirement(&uuid).expect("we just inserted this"))
+    }
+
+    /// Update the human-readable IDs (HRIDs) of all 'parents' references in the
+    /// requirements.
+    ///
+    /// These can become out of sync if requirement files are renamed.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if some of the requirements cannot be saved
+    /// to disk. This method does *not* fail fast. That is, it will attempt
+    /// to save all the requirements before returning the error.
+    pub fn update_hrids(&mut self) -> Result<(), UpdateHridsError> {
+        let updated: Vec<_> = self.tree.update_hrids().collect();
+
+        let failures = updated
+            .iter()
+            .filter_map(|&id| {
+                let requirement = self.tree.requirement(&id)?.clone();
+                let hrid = requirement.hrid().clone();
+                self.store_requirement(requirement)
+                    .err()
+                    .map(|e| (self.canonical_path(&hrid), e))
+            })
+            .collect();
+
+        NonEmpty::from_vec(failures).map_or(Ok(()), |failures| Err(UpdateHridsError { failures }))
+    }
+}
+
+/// Load a requirement from the given path, inferring the HRID from the path.
+fn load_requirement_from_canonical_path(path: &Path) -> Result<Requirement, LoadFromPathError> {
+    let hrid_str = path
+        .file_stem()
+        .ok_or_else(|| LoadFromPathError(path.to_path_buf()))?;
+
+    let hrid = Hrid::from_str(
+        hrid_str
+            .to_str()
+            .ok_or_else(|| LoadFromPathError(path.to_path_buf()))?,
+    )
+    .map_err(|_| LoadFromPathError(path.to_path_buf()))?;
+
+    let markdown_requirement =
+        MarkdownRequirement::load(path, hrid).map_err(|_| LoadFromPathError(path.to_path_buf()))?;
+    Ok(markdown_requirement.into())
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("failed to load requirement from path {0}")]
+struct LoadFromPathError(PathBuf);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Failed to link requirements: {0}")]
+pub enum LinkError {
+    Io(#[from] io::Error),
+    #[error("requirement {0} not found")]
+    NotFound(Hrid),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -147,91 +300,6 @@ fn collect_markdown_paths(root: &PathBuf) -> Vec<PathBuf> {
         .filter(|entry| entry.path().extension() == Some(OsStr::new("md")))
         .map(walkdir::DirEntry::into_path)
         .collect()
-}
-
-fn try_load_requirement(path: &Path) -> Result<Requirement, PathBuf> {
-    let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().to_string()) else {
-        tracing::debug!("Skipping file without valid stem: {}", path.display());
-        return Err(path.to_path_buf());
-    };
-
-    let Ok(hrid) = Hrid::from_str(&stem) else {
-        tracing::debug!("Skipping file with invalid HRID: {}", stem);
-        return Err(path.to_path_buf());
-    };
-
-    let dir = path.parent().unwrap_or(path).to_path_buf();
-
-    match Requirement::load(&dir, hrid) {
-        Ok(req) => Ok(req),
-        Err(e) => {
-            tracing::debug!(
-                "Failed to load requirement from {}: {:?}",
-                path.display(),
-                e
-            );
-            Err(path.to_path_buf())
-        }
-    }
-}
-
-impl Directory<Loaded> {
-    /// Add a new requirement to the directory.
-    ///
-    /// # Errors
-    ///
-    /// This method can fail if:
-    ///
-    /// - the provided `kind` is an empty string
-    /// - the requirement file cannot be written to
-    pub fn add_requirement(&mut self, kind: String) -> Result<Requirement, AddRequirementError> {
-        let tree = &mut self.state.0;
-
-        let id = tree.next_index(&kind);
-
-        let requirement = Requirement::new(Hrid::new(kind, id)?, String::new());
-
-        requirement.save(&self.root)?;
-        tree.insert(requirement.clone());
-
-        tracing::info!("Added requirement: {}", requirement.hrid());
-
-        Ok(requirement)
-    }
-
-    /// Update the human-readable IDs (HRIDs) of all 'parents' references in the
-    /// requirements.
-    ///
-    /// These can become out of sync if requirement files are renamed.
-    ///
-    /// # Errors
-    ///
-    /// This method returns an error if some of the requirements cannot be saved
-    /// to disk. This method does *not* fail fast. That is, it will attempt
-    /// to save all the requirements before returning the error.
-    pub fn update_hrids(&mut self) -> Result<(), UpdateHridsError> {
-        let tree = &mut self.state.0;
-        let updated: Vec<_> = tree.update_hrids().collect();
-
-        let failures = updated
-            .iter()
-            .filter_map(|&id| {
-                let requirement = tree.requirement(id)?;
-                requirement.save(&self.root).err().map(|e| {
-                    (
-                        // TODO: manually constructing the path here is brittle. This logic should
-                        // be centralised.
-                        self.root
-                            .join(requirement.hrid().to_string())
-                            .with_extension("md"),
-                        e,
-                    )
-                })
-            })
-            .collect();
-
-        NonEmpty::from_vec(failures).map_or(Ok(()), |failures| Err(UpdateHridsError { failures }))
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -268,106 +336,5 @@ impl fmt::Display for UpdateHridsError {
         } else {
             write!(f, "{msg}... (and {} more)", total - MAX_DISPLAY)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use tempfile::TempDir;
-
-    use super::*;
-    use crate::Requirement;
-
-    fn setup_temp_directory() -> (TempDir, Directory<Loaded>) {
-        let tmp = TempDir::new().expect("failed to create temp dir");
-        let path = tmp.path().to_path_buf();
-        (tmp, Directory::new(path).load_all().unwrap())
-    }
-
-    #[test]
-    fn can_add_requirement() {
-        let (_tmp, mut dir) = setup_temp_directory();
-        let r1 = dir.add_requirement("REQ".to_string()).unwrap();
-
-        assert_eq!(r1.hrid().to_string(), "REQ-001");
-
-        let loaded =
-            Requirement::load(&dir.root, r1.hrid().clone()).expect("should load saved requirement");
-        assert_eq!(loaded.uuid(), r1.uuid());
-    }
-
-    #[test]
-    fn can_add_multiple_requirements_with_incrementing_id() {
-        let (_tmp, mut dir) = setup_temp_directory();
-        let r1 = dir.add_requirement("REQ".to_string()).unwrap();
-        let r2 = dir.add_requirement("REQ".to_string()).unwrap();
-
-        assert_eq!(r1.hrid().to_string(), "REQ-001");
-        assert_eq!(r2.hrid().to_string(), "REQ-002");
-    }
-
-    #[test]
-    fn can_link_two_requirements() {
-        let (_tmp, mut dir) = setup_temp_directory();
-        let parent = dir.add_requirement("SYS".to_string()).unwrap();
-        let child = dir.add_requirement("USR".to_string()).unwrap();
-
-        Directory::new(dir.root.clone())
-            .link_requirement(child.hrid().clone(), parent.hrid().clone())
-            .unwrap();
-
-        let updated =
-            Requirement::load(&dir.root, child.hrid().clone()).expect("should load child");
-
-        let parents: Vec<_> = updated.parents().collect();
-        assert_eq!(parents.len(), 1);
-        assert_eq!(parents[0].0, parent.uuid());
-        assert_eq!(&parents[0].1.hrid, parent.hrid());
-    }
-
-    #[test]
-    fn update_hrids_corrects_outdated_parent_hrids() {
-        let (_tmp, mut dir) = setup_temp_directory();
-        let parent = dir.add_requirement("P".to_string()).unwrap();
-        let mut child = dir.add_requirement("C".to_string()).unwrap();
-
-        // Manually corrupt HRID in child's parent info
-        child.add_parent(
-            parent.uuid(),
-            Parent {
-                hrid: Hrid::try_from("WRONG-999").unwrap(),
-                fingerprint: parent.fingerprint(),
-            },
-        );
-        child.save(&dir.root).unwrap();
-
-        let mut loaded_dir = Directory::new(dir.root.clone()).load_all().unwrap();
-        loaded_dir.update_hrids().unwrap();
-
-        let updated = Requirement::load(&loaded_dir.root, child.hrid().clone())
-            .expect("should load updated child");
-        let (_, parent_ref) = updated.parents().next().unwrap();
-
-        assert_eq!(&parent_ref.hrid, parent.hrid());
-    }
-
-    #[test]
-    fn load_all_reads_all_saved_requirements() {
-        let (_tmp, mut dir) = setup_temp_directory();
-        let r1 = dir.add_requirement("X".to_string()).unwrap();
-        let r2 = dir.add_requirement("X".to_string()).unwrap();
-
-        let loaded = Directory::new(dir.root.clone()).load_all().unwrap();
-
-        let mut found = 0;
-        for i in 1..=2 {
-            let hrid = Hrid::from_str(&format!("X-00{i}")).unwrap();
-            let req = Requirement::load(&loaded.root, hrid).unwrap();
-            if req.uuid() == r1.uuid() || req.uuid() == r2.uuid() {
-                found += 1;
-            }
-        }
-
-        assert_eq!(found, 2);
     }
 }

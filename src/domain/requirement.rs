@@ -1,18 +1,14 @@
-use std::{
-    collections::{BTreeSet, HashMap},
-    io,
-    path::Path,
-};
+use std::collections::{BTreeSet, HashMap};
 
 use borsh::BorshSerialize;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-pub use crate::domain::requirement::storage::LoadError;
-use crate::domain::{requirement::storage::MarkdownRequirement, Hrid};
+pub use crate::domain::requirement::markdown::LoadError;
+use crate::domain::Hrid;
 
-mod storage;
+pub mod markdown;
 
 /// A requirement is a document used to describe a system.
 ///
@@ -175,32 +171,6 @@ impl Requirement {
             .parents
             .iter_mut()
             .map(|(&id, parent)| (id, parent))
-    }
-
-    /// Reads a requirement from the given file path.
-    ///
-    /// Note the path here is the path to the directory. The filename is
-    /// determined by the HRID
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file does not exist, cannot be read from, or has
-    /// malformed YAML frontmatter.
-    pub fn load(path: &Path, hrid: Hrid) -> Result<Self, LoadError> {
-        Ok(MarkdownRequirement::load(path, hrid)?.try_into()?)
-    }
-
-    /// Writes the requirement to the given file path.
-    /// Creates the file if it doesn't exist, or overwrites it if it does.
-    ///
-    /// Note the path here is the path to the directory. The filename is
-    /// determined by the HRID.
-    ///
-    /// # Errors
-    ///
-    /// This method returns an error if the path cannot be written to.
-    pub fn save(&self, path: &Path) -> io::Result<()> {
-        MarkdownRequirement::from(self.clone()).save(path)
     }
 }
 
