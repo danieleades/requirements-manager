@@ -9,7 +9,7 @@ use std::{cmp::Ordering, collections::HashMap};
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::Requirement;
+use crate::{Hrid, Requirement};
 
 /// An in-memory representation of the set of requirements
 #[derive(Debug, Default, PartialEq)]
@@ -22,6 +22,8 @@ pub struct Tree {
 
     /// A map from requirement kind to the next available index for that kind.
     next_indices: HashMap<String, usize>,
+
+    hrid_map: HashMap<Hrid, Uuid>,
 }
 
 impl Tree {
@@ -30,39 +32,63 @@ impl Tree {
             requirements: Vec::with_capacity(capacity),
             index: HashMap::with_capacity(capacity),
             next_indices: HashMap::new(),
+            hrid_map: HashMap::with_capacity(capacity),
         }
     }
 
     /// Inserts a requirement into the tree.
-    /// Panics if a requirement with the same UUID already exists.
-    pub fn insert(&mut self, requirement: Requirement) {
+    /// Returns the old requirement if one with the same UUID already exists,
+    /// otherwise None.
+    pub fn insert(&mut self, requirement: Requirement) -> Option<Requirement> {
         let uuid = requirement.uuid();
-        assert!(
-            !self.index.contains_key(&uuid),
-            "Duplicate requirement UUID: {uuid}"
-        );
-        let index = self.requirements.len();
+        let hrid = requirement.hrid().clone();
 
-        // Update the current index for the requirement's kind to the larger of its
-        // current value or the index of the incoming requirement.
-        let hrid = requirement.hrid();
-        let kind = hrid.kind();
-        let suffix = hrid.id();
+        if let Some(existing_index) = self.index.get(&uuid).copied() {
+            // Replace existing requirement
+            let old_requirement =
+                std::mem::replace(&mut self.requirements[existing_index], requirement);
+            let old_hrid = old_requirement.hrid();
 
-        self.next_indices
-            .entry(kind.to_string())
-            .and_modify(|i| *i = (*i).max(suffix + 1))
-            .or_insert(suffix + 1);
+            // Update HRID mappings only if they differ
+            if &hrid != old_hrid {
+                self.hrid_map.remove(old_hrid);
+                self.hrid_map.insert(hrid, uuid);
+            }
 
-        self.requirements.push(requirement);
-        self.index.insert(uuid, index);
+            Some(old_requirement)
+        } else {
+            // Insert new requirement
+            let index = self.requirements.len();
+
+            self.hrid_map.insert(hrid, uuid);
+            self.requirements.push(requirement);
+            self.index.insert(uuid, index);
+
+            None
+        }
     }
 
     /// Retrieves a requirement by UUID.
-    pub fn requirement(&self, uuid: Uuid) -> Option<&Requirement> {
+    pub fn requirement(&self, uuid: &Uuid) -> Option<&Requirement> {
         self.index
-            .get(&uuid)
+            .get(uuid)
             .and_then(|&idx| self.requirements.get(idx))
+    }
+
+    /// Retrieves a requirement by UUID.
+    pub fn requirement_mut(&mut self, uuid: &Uuid) -> Option<&mut Requirement> {
+        let idx = *self.index.get(uuid)?;
+        self.requirements.get_mut(idx)
+    }
+
+    pub fn requirement_by_hrid(&self, hrid: &Hrid) -> Option<&Requirement> {
+        let uuid = self.hrid_map.get(hrid)?;
+        self.requirement(uuid)
+    }
+
+    pub fn requirement_by_hrid_mut(&mut self, hrid: &Hrid) -> Option<&mut Requirement> {
+        let uuid = *self.hrid_map.get(hrid)?;
+        self.requirement_mut(&uuid)
     }
 
     /// Read all the requirements and update any incorrect parent HRIDs.
@@ -122,7 +148,8 @@ impl Tree {
 mod tests {
     use uuid::Uuid;
 
-    use crate::{domain::Hrid, storage::Tree, Requirement};
+    use super::Tree;
+    use crate::{domain::Hrid, Requirement};
 
     fn make_requirement(uuid: Uuid, hrid: Hrid, parents: Vec<(Uuid, Hrid)>) -> Requirement {
         let mut req = Requirement::new_with_uuid(hrid, String::new(), uuid);
@@ -146,20 +173,21 @@ mod tests {
         let req = make_requirement(uuid, hrid.clone(), vec![]);
         tree.insert(req);
 
-        let retrieved = tree.requirement(uuid).unwrap();
+        let retrieved = tree.requirement(&uuid).unwrap();
         assert_eq!(retrieved.uuid(), uuid);
         assert_eq!(retrieved.hrid(), &hrid);
     }
 
     #[test]
-    #[should_panic(expected = "Duplicate requirement UUID")]
     fn test_insert_duplicate_uuid_panics() {
         let mut tree = Tree::default();
         let uuid = Uuid::new_v4();
         let req1 = make_requirement(uuid, Hrid::try_from("R-001").unwrap(), vec![]);
         let req2 = make_requirement(uuid, Hrid::try_from("R-002").unwrap(), vec![]);
         tree.insert(req1);
-        tree.insert(req2); // should panic
+        assert!(tree.insert(req2).is_some()); // when inserting duplicate UUIDs
+                                              // the original requirement should
+                                              // be returned.
     }
 
     #[test]
@@ -181,7 +209,7 @@ mod tests {
         let updated: Vec<_> = tree.update_hrids().collect();
         assert_eq!(updated, vec![child_uuid]);
 
-        let updated_child = tree.requirement(child_uuid).unwrap();
+        let updated_child = tree.requirement(&child_uuid).unwrap();
         let (_, actual_parent) = updated_child.parents().next().unwrap();
         assert_eq!(actual_parent.hrid, Hrid::try_from("P-001").unwrap());
     }

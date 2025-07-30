@@ -6,3 +6,6 @@ pub use config::Config;
 
 mod hrid;
 pub use hrid::{EmptyStringError, Hrid};
+
+mod tree;
+pub use tree::Tree;

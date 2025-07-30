@@ -12,7 +12,7 @@ use non_empty_string::NonEmptyString;
 /// - `ID` is a positive integer (e.g. `001`, `123`)
 ///
 /// Examples: `URS-001`, `SYS-099`, `COMPONENT-SUBCOMPONENT-SYS-005`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Hrid {
     namespace: Vec<NonEmptyString>,
     kind: NonEmptyString,
