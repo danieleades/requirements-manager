@@ -31,10 +31,11 @@ use crate::{
 pub struct Directory {
     /// The root of the directory requirements are stored in.
     root: PathBuf,
+
+    /// In-memory representation of the 'tree' of requirements
     tree: Tree,
 }
 
-// fresh attempt at defining the API
 impl Directory {
     /// Get a requirement from the in-memory cache, if present
     #[must_use]
