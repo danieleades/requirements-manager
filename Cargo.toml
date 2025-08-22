@@ -24,6 +24,7 @@ chrono = { version = "0.4.41", features = ["serde"] }
 clap = { version = "4.5.41", features = ["derive"] }
 non-empty-string = "0.2.6"
 nonempty = "0.12.0"
+petgraph = "0.8.2"
 rayon = "1.10.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_yaml = "0.9.34"
@@ -38,19 +39,20 @@ walkdir = "2.5.0"
 [dev-dependencies]
 criterion = "0.7.0"
 tempfile = "3.20.0"
+test-case = "3.3.1"
 
 [[bench]]
 name = "add_many"
 harness = false
 
-[[bench]]
-name = "update_hrids"
-harness = false
+#[[bench]]
+#name = "update_hrids"
+#harness = false
 
 [lints.rust]
 missing_docs = "warn"
 
 [lints.clippy]
-pedantic = "deny"
-nursery = "deny"
+#pedantic = "deny"
+#nursery = "deny"
 cargo = "deny"

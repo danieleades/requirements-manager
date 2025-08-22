@@ -1,8 +1,13 @@
 pub mod requirement;
-pub use requirement::Requirement;
+pub use requirement::{Fingerprint, Requirement};
 
 mod config;
 pub use config::Config;
 
-mod hrid;
+pub mod hrid;
 pub use hrid::{EmptyStringError, Hrid};
+
+mod hrid_tree;
+mod tree;
+
+pub use hrid_tree::HridTree;
