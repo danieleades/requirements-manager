@@ -30,16 +30,17 @@ impl Iterator for Recursive<'_> {
     type Item = Uuid;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(node) = self.stack.pop() {
-            // Expand first to avoid dropping siblings
-            for n in self.tree.graph.neighbors_directed(node, self.direction) {
-                if self.visited.insert(n) {
-                    self.stack.push(n);
-                }
+        // Pop one work item or return None
+        let node = self.stack.pop()?;
+
+        // Expand neighbors before yielding to avoid dropping siblings
+        for n in self.tree.graph.neighbors_directed(node, self.direction) {
+            if self.visited.insert(n) {
+                self.stack.push(n);
             }
-            return Some(node); // always yield the popped node
         }
-        None
+
+        Some(node)
     }
 }
 
