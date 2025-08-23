@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use clap::ArgAction;
-use requiem::{Directory, Hrid};
+use non_empty_string::NonEmptyString;
+use requiem::{Directory, Hrid, Requirement};
 use tracing::instrument;
 
 #[derive(Debug, clap::Parser)]
@@ -81,7 +82,7 @@ pub struct Add {
     /// The kind of requirement to create.
     ///
     /// eg. 'USR' or 'SYS'.
-    kind: String,
+    kind: NonEmptyString,
 
     /// The human-readable IDs of the parent requirements.
     #[clap(long, short, value_delimiter = ',')]
@@ -91,16 +92,16 @@ pub struct Add {
 impl Add {
     #[instrument]
     fn run(self, root: PathBuf) -> anyhow::Result<()> {
-        let mut directory = Directory::new(root).load_all()?;
-        let requirement = directory.add_requirement(self.kind)?;
+        let mut directory = Directory::load(root)?;
+        let (_uuid, hrid) = directory.add(self.kind, Requirement::default())?;
 
         for parent in self.parent {
             // TODO: the linkage should be done before the requirement is saved by the
             // 'add_requirement' method to avoid unnecessary IO.
-            directory.link_requirement(requirement.hrid().clone(), parent)?;
+            directory.link(&hrid, &parent)?;
         }
 
-        println!("Added requirement {}", requirement.hrid());
+        println!("Added requirement {}", hrid);
         Ok(())
     }
 }
@@ -117,10 +118,10 @@ pub struct Link {
 impl Link {
     #[instrument]
     fn run(self, root: PathBuf) -> anyhow::Result<()> {
-        let directory = Directory::new(root);
+        let mut directory = Directory::load(root)?;
         let msg = format!("Linked {} to {}", self.child, self.parent);
 
-        directory.link_requirement(self.child, self.parent)?;
+        directory.link(&self.child, &self.parent)?;
 
         println!("{msg}");
 
@@ -134,7 +135,7 @@ pub struct Clean {}
 impl Clean {
     #[instrument]
     fn run(path: PathBuf) -> anyhow::Result<()> {
-        Directory::new(path).load_all()?.update_hrids()?;
+        Directory::load(path)?.update_hrids()?;
         Ok(())
     }
 }

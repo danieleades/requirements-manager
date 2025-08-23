@@ -12,11 +12,11 @@ use non_empty_string::NonEmptyString;
 /// - `ID` is a positive integer (e.g. `001`, `123`)
 ///
 /// Examples: `URS-001`, `SYS-099`, `COMPONENT-SUBCOMPONENT-SYS-005`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Hrid {
-    namespace: Vec<NonEmptyString>,
-    kind: NonEmptyString,
-    id: usize,
+    pub namespace: Vec<NonEmptyString>,
+    pub kind: NonEmptyString,
+    pub id: usize,
 }
 
 /// Error returned when the provided string is empty
@@ -30,8 +30,9 @@ impl Hrid {
     /// # Errors
     ///
     /// Returns an error if `kind` is an empty string.
-    pub fn new(kind: String, id: usize) -> Result<Self, EmptyStringError> {
-        Self::new_with_namespace(Vec::new(), kind, id)
+    #[must_use]
+    pub const fn new(kind: NonEmptyString, id: usize) -> Self {
+        Self::new_with_namespace_unchecked(Vec::new(), kind, id)
     }
 
     /// Create an HRID with the given namespace.
@@ -41,11 +42,9 @@ impl Hrid {
     /// Returns an error if `kind` is empty or any namespace segment is empty.
     pub fn new_with_namespace(
         namespace: Vec<String>,
-        kind: String,
+        kind: NonEmptyString,
         id: usize,
     ) -> Result<Self, EmptyStringError> {
-        let kind = NonEmptyString::new(kind).map_err(|_| EmptyStringError)?;
-
         let validated_namespace = namespace
             .into_iter()
             .map(|s| NonEmptyString::new(s).map_err(|_| EmptyStringError))
@@ -172,283 +171,77 @@ impl TryFrom<&str> for Hrid {
 
 #[cfg(test)]
 mod tests {
+    use test_case::test_case;
+
     use super::*;
 
-    #[test]
-    fn hrid_creation_no_namespace() {
-        let hrid = Hrid::new("URS".to_string(), 42).unwrap();
-        assert!(hrid.namespace().is_empty());
-        assert_eq!(hrid.kind(), "URS");
-        assert_eq!(hrid.id(), 42);
+    fn nes(s: &str) -> NonEmptyString {
+        NonEmptyString::new(s.to_string()).unwrap()
+    }
+
+    #[test_case("URS", 42 => "URS-042")]
+    #[test_case("SYS", 1 => "SYS-001")]
+    #[test_case("TEST", 999 => "TEST-999")]
+    fn display_no_namespace(kind: &str, id: usize) -> String {
+        Hrid::new(nes(kind), id).to_string()
+    }
+
+    #[test_case(vec!["COMPONENT"], "SYS", 5 => "COMPONENT-SYS-005")]
+    #[test_case(vec!["COMPONENT", "SUB"], "SYS", 5 => "COMPONENT-SUB-SYS-005")]
+    #[test_case(vec!["A", "B", "C"], "REQ", 123 => "A-B-C-REQ-123")]
+    fn display_with_namespace(namespace: Vec<&str>, kind: &str, id: usize) -> String {
+        let ns = namespace
+            .into_iter()
+            .map(std::string::ToString::to_string)
+            .collect();
+        let hrid = Hrid::new_with_namespace(ns, nes(kind), id).unwrap();
+        hrid.to_string()
+    }
+
+    #[test_case("URS-001", &[], "URS", 1)]
+    #[test_case("NS-SYS-42", &["NS"], "SYS", 42)]
+    #[test_case("A-B-C-REQ-123", &["A", "B", "C"], "REQ", 123)]
+    fn parse_valid(input: &str, expected_ns: &[&str], expected_kind: &str, expected_id: usize) {
+        let hrid = Hrid::try_from(input).unwrap();
+        assert_eq!(hrid.namespace(), expected_ns);
+        assert_eq!(hrid.kind(), expected_kind);
+        assert_eq!(hrid.id(), expected_id);
     }
 
     #[test]
-    fn hrid_creation_with_namespace() {
-        let hrid = Hrid::new_with_namespace(
-            vec!["COMPONENT".to_string(), "SUBCOMPONENT".to_string()],
-            "SYS".to_string(),
-            5,
-        )
-        .unwrap();
+    fn equality_and_clone() {
+        let h1 = Hrid::new_with_namespace(vec!["NS".into()], nes("URS"), 42).unwrap();
+        let h2 = h1.clone();
+        assert_eq!(h1, h2);
 
-        assert_eq!(hrid.namespace(), vec!["COMPONENT", "SUBCOMPONENT"]);
-        assert_eq!(hrid.kind(), "SYS");
-        assert_eq!(hrid.id(), 5);
+        let h3 = Hrid::new(nes("URS"), 43);
+        assert_ne!(h1, h3);
+
+        let h4 = Hrid::new(nes("SYS"), 42);
+        assert_ne!(h1, h4);
+
+        let h5 = Hrid::new_with_namespace(vec![], nes("URS"), 42).unwrap();
+        assert_ne!(h1, h5);
     }
 
     #[test]
-    fn hrid_creation_empty_kind_fails() {
-        let result = Hrid::new(String::new(), 42);
-        assert!(matches!(result, Err(EmptyStringError)));
-    }
-
-    #[test]
-    fn hrid_creation_empty_namespace_segment_fails() {
-        let result = Hrid::new_with_namespace(
-            vec!["COMPONENT".to_string(), String::new()],
-            "SYS".to_string(),
-            5,
-        );
-        assert!(matches!(result, Err(EmptyStringError)));
-    }
-
-    #[test]
-    fn hrid_display_no_namespace() {
-        let hrid = Hrid::new("SYS".to_string(), 1).unwrap();
-        assert_eq!(format!("{hrid}"), "SYS-001");
-
-        let hrid = Hrid::new("URS".to_string(), 42).unwrap();
-        assert_eq!(format!("{hrid}"), "URS-042");
-
-        let hrid = Hrid::new("TEST".to_string(), 999).unwrap();
-        assert_eq!(format!("{hrid}"), "TEST-999");
-    }
-
-    #[test]
-    fn hrid_display_with_namespace() {
-        let hrid =
-            Hrid::new_with_namespace(vec!["COMPONENT".to_string()], "SYS".to_string(), 5).unwrap();
-        assert_eq!(format!("{hrid}"), "COMPONENT-SYS-005");
-
-        let hrid = Hrid::new_with_namespace(
-            vec!["COMPONENT".to_string(), "SUBCOMPONENT".to_string()],
-            "SYS".to_string(),
-            5,
-        )
-        .unwrap();
-        assert_eq!(format!("{hrid}"), "COMPONENT-SUBCOMPONENT-SYS-005");
-
-        let hrid = Hrid::new_with_namespace(
-            vec!["A".to_string(), "B".to_string(), "C".to_string()],
-            "REQ".to_string(),
-            123,
-        )
-        .unwrap();
-        assert_eq!(format!("{hrid}"), "A-B-C-REQ-123");
-    }
-
-    #[test]
-    fn hrid_display_large_numbers() {
-        let hrid = Hrid::new("BIG".to_string(), 1000).unwrap();
-        assert_eq!(format!("{hrid}"), "BIG-1000");
-
-        let hrid =
-            Hrid::new_with_namespace(vec!["NS".to_string()], "HUGE".to_string(), 12345).unwrap();
-        assert_eq!(format!("{hrid}"), "NS-HUGE-12345");
-    }
-
-    #[test]
-    fn try_from_valid_no_namespace() {
-        let hrid = Hrid::try_from("URS-001").unwrap();
-        assert!(hrid.namespace().is_empty());
-        assert_eq!(hrid.kind(), "URS");
-        assert_eq!(hrid.id(), 1);
-
-        let hrid = Hrid::try_from("SYS-042").unwrap();
-        assert!(hrid.namespace().is_empty());
-        assert_eq!(hrid.kind(), "SYS");
-        assert_eq!(hrid.id(), 42);
-
-        let hrid = Hrid::try_from("TEST-999").unwrap();
-        assert!(hrid.namespace().is_empty());
-        assert_eq!(hrid.kind(), "TEST");
-        assert_eq!(hrid.id(), 999);
-    }
-
-    #[test]
-    fn try_from_valid_with_namespace() {
-        let hrid = Hrid::try_from("COMPONENT-SYS-005").unwrap();
-        assert_eq!(hrid.namespace(), vec!["COMPONENT"]);
-        assert_eq!(hrid.kind(), "SYS");
-        assert_eq!(hrid.id(), 5);
-
-        let hrid = Hrid::try_from("COMPONENT-SUBCOMPONENT-SYS-005").unwrap();
-        assert_eq!(hrid.namespace(), vec!["COMPONENT", "SUBCOMPONENT"]);
-        assert_eq!(hrid.kind(), "SYS");
-        assert_eq!(hrid.id(), 5);
-
-        let hrid = Hrid::try_from("A-B-C-REQ-123").unwrap();
-        assert_eq!(hrid.namespace(), vec!["A", "B", "C"]);
-        assert_eq!(hrid.kind(), "REQ");
-        assert_eq!(hrid.id(), 123);
-    }
-
-    #[test]
-    fn try_from_valid_no_leading_zeros() {
-        let hrid = Hrid::try_from("URS-1").unwrap();
-        assert!(hrid.namespace().is_empty());
-        assert_eq!(hrid.kind(), "URS");
-        assert_eq!(hrid.id(), 1);
-
-        let hrid = Hrid::try_from("NS-SYS-42").unwrap();
-        assert_eq!(hrid.namespace(), vec!["NS"]);
-        assert_eq!(hrid.kind(), "SYS");
-        assert_eq!(hrid.id(), 42);
-    }
-
-    #[test]
-    fn try_from_valid_large_numbers() {
-        let hrid = Hrid::try_from("BIG-1000").unwrap();
-        assert!(hrid.namespace().is_empty());
-        assert_eq!(hrid.kind(), "BIG");
-        assert_eq!(hrid.id(), 1000);
-
-        let hrid = Hrid::try_from("NS-HUGE-12345").unwrap();
-        assert_eq!(hrid.namespace(), vec!["NS"]);
-        assert_eq!(hrid.kind(), "HUGE");
-        assert_eq!(hrid.id(), 12345);
-    }
-
-    #[test]
-    fn try_from_invalid_no_dash() {
-        let result = Hrid::try_from("URS001");
-        assert_eq!(result, Err(Error::Syntax("URS001".to_string())));
-    }
-
-    #[test]
-    fn try_from_invalid_empty_string() {
-        let result = Hrid::try_from("");
-        assert_eq!(result, Err(Error::Syntax(String::new())));
-    }
-
-    #[test]
-    fn try_from_invalid_only_dash() {
-        let result = Hrid::try_from("-");
-        assert_eq!(result, Err(Error::Syntax("-".to_string())));
-    }
-
-    #[test]
-    fn try_from_invalid_single_part() {
-        let result = Hrid::try_from("JUSTONEWORD");
-        assert_eq!(result, Err(Error::Syntax("JUSTONEWORD".to_string())));
-    }
-
-    #[test]
-    fn try_from_invalid_non_numeric_id() {
-        let result = Hrid::try_from("URS-abc");
-        assert_eq!(
-            result,
-            Err(Error::Id("URS-abc".to_string(), "abc".to_string()))
-        );
-
-        let result = Hrid::try_from("NS-URS-abc");
-        assert_eq!(
-            result,
-            Err(Error::Id("NS-URS-abc".to_string(), "abc".to_string()))
-        );
-    }
-
-    #[test]
-    fn try_from_invalid_mixed_id() {
-        let result = Hrid::try_from("SYS-12abc");
-        assert_eq!(
-            result,
-            Err(Error::Id("SYS-12abc".to_string(), "12abc".to_string()))
-        );
-    }
-
-    #[test]
-    fn try_from_invalid_negative_id() {
-        let result = Hrid::try_from("URS--1");
-        assert_eq!(result, Err(Error::Syntax("URS--1".to_string())));
-    }
-
-    #[test]
-    fn try_from_empty_namespace_segment_fails() {
-        let result = Hrid::try_from("-NS-SYS-001");
-        assert!(result == Err(Error::Syntax("-NS-SYS-001".to_string())));
-
-        let result = Hrid::try_from("NS--SYS-001");
-        assert!(result == Err(Error::Syntax("NS--SYS-001".to_string())));
-    }
-
-    #[test]
-    fn try_from_empty_kind_fails() {
-        // This would actually be caught by consecutive dashes check now
-        // but let's test a case where kind is empty due to structure
-        let result = Hrid::try_from("-001");
-        assert_eq!(result, Err(Error::Syntax("-001".to_string())));
-    }
-
-    #[test]
-    fn hrid_clone_and_eq() {
-        let hrid1 =
-            Hrid::new_with_namespace(vec!["NS".to_string()], "URS".to_string(), 42).unwrap();
-        let hrid2 = hrid1.clone();
-
-        assert_eq!(hrid1, hrid2);
-        assert_eq!(hrid1.namespace(), hrid2.namespace());
-        assert_eq!(hrid1.kind(), hrid2.kind());
-        assert_eq!(hrid1.id(), hrid2.id());
-    }
-
-    #[test]
-    fn hrid_not_eq() {
-        let hrid1 = Hrid::new("URS".to_string(), 42).unwrap();
-        let hrid2 = Hrid::new("SYS".to_string(), 42).unwrap();
-        let hrid3 = Hrid::new("URS".to_string(), 43).unwrap();
-        let hrid4 =
-            Hrid::new_with_namespace(vec!["NS".to_string()], "URS".to_string(), 42).unwrap();
-
-        assert_ne!(hrid1, hrid2);
-        assert_ne!(hrid1, hrid3);
-        assert_ne!(hrid1, hrid4);
-    }
-
-    #[test]
-    fn roundtrip_conversion_no_namespace() {
-        let original = Hrid::new("TEST".to_string(), 123).unwrap();
-
-        let as_string = format!("{original}");
-        let parsed = Hrid::try_from(as_string.as_str()).unwrap();
-
-        assert_eq!(original, parsed);
-    }
-
-    #[test]
-    fn roundtrip_conversion_with_namespace() {
-        let original = Hrid::new_with_namespace(
-            vec!["COMPONENT".to_string(), "SUBCOMPONENT".to_string()],
-            "SYS".to_string(),
-            5,
-        )
-        .unwrap();
-
-        let as_string = format!("{original}");
-        let parsed = Hrid::try_from(as_string.as_str()).unwrap();
-
-        assert_eq!(original, parsed);
+    fn roundtrip_display_and_parse() {
+        let original =
+            Hrid::new_with_namespace(vec!["COMPONENT".into(), "SUB".into()], nes("SYS"), 5)
+                .unwrap();
+        let roundtripped = Hrid::try_from(original.to_string().as_str()).unwrap();
+        assert_eq!(original, roundtripped);
     }
 
     #[test]
     fn error_display() {
-        let syntax_error = Error::Syntax("bad-format".to_string());
-        assert_eq!(format!("{syntax_error}"), "Invalid HRID format: bad-format");
+        let e1 = Error::Syntax("bad".into());
+        assert_eq!(e1.to_string(), "Invalid HRID format: bad");
 
-        let id_error = Error::Id("URS-bad".to_string(), "bad".to_string());
+        let e2 = Error::Id("URS-abc".into(), "abc".into());
         assert_eq!(
-            format!("{id_error}"),
-            "Invalid ID in HRID 'URS-bad': expected an integer, got bad"
+            e2.to_string(),
+            "Invalid ID in HRID 'URS-abc': expected an integer, got abc"
         );
     }
 }

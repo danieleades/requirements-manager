@@ -3,22 +3,27 @@
 
 #![allow(missing_docs)]
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use requiem::{Directory, Hrid};
+use non_empty_string::NonEmptyString;
+use requiem::{Directory, Hrid, Requirement};
 use tempfile::TempDir;
 
 /// Generates a large number of interlinked documents
 fn preseed_directory(path: PathBuf) {
-    let mut directory = Directory::new(path).load_all().unwrap();
+    let mut directory = Directory::load(path).unwrap();
     for i in 1..=99 {
-        directory.add_requirement("USR".to_string()).unwrap();
-        directory.add_requirement("SYS".to_string()).unwrap();
+        directory
+            .add(NonEmptyString::from_str("USR").unwrap(), Requirement::default())
+            .unwrap();
+        directory
+            .add(NonEmptyString::from_str("SYS").unwrap(), Requirement::default())
+            .unwrap();
         let mut requirement = directory
-            .link_requirement(
-                Hrid::new("SYS".to_string(), i).unwrap(),
-                Hrid::new("USR".to_string(), i).unwrap(),
+            .link(
+                &Hrid::new(NonEmptyString::from_str("SYS").unwrap(), i),
+                &Hrid::new(NonEmptyString::from_str("USR").unwrap(), i),
             )
             .unwrap();
         requirement.parents_mut().next().unwrap().1.hrid = Hrid::try_from("WRONG-001").unwrap();
@@ -37,8 +42,7 @@ fn update_hrids(c: &mut Criterion) {
                 tmp_dir
             },
             |tmp_dir| {
-                Directory::new(tmp_dir.path().to_path_buf())
-                    .load_all()
+                Directory::load(tmp_dir.path().to_path_buf())
                     .unwrap()
                     .update_hrids()
                     .unwrap();
